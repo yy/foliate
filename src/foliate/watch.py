@@ -10,7 +10,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .build import SUPPORTED_ASSET_EXTENSIONS
+from .assets import SUPPORTED_ASSET_EXTENSIONS
 from .build import build as do_build
 from .config import Config
 

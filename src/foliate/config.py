@@ -146,14 +146,18 @@ class Config:
 
         # Load advanced config
         if "advanced" in data:
+            import os
+
             adv_data = data["advanced"]
+            quarto_python = adv_data.get("quarto_python", config.advanced.quarto_python)
+            # Expand ~ in paths
+            if quarto_python:
+                quarto_python = os.path.expanduser(quarto_python)
             config.advanced = AdvancedConfig(
                 quarto_enabled=adv_data.get(
                     "quarto_enabled", config.advanced.quarto_enabled
                 ),
-                quarto_python=adv_data.get(
-                    "quarto_python", config.advanced.quarto_python
-                ),
+                quarto_python=quarto_python,
             )
 
         return config
