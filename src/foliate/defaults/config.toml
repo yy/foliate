@@ -1,0 +1,83 @@
+# Foliate Configuration
+# This file configures your static site build.
+# All settings have sensible defaults - customize only what you need.
+#
+# This is YOUR config - personalize it for your site!
+
+[site]
+# Site name (appears in browser title, metadata)
+name = "My Site"
+
+# Full URL where the site will be deployed (used for sitemaps, social cards)
+url = "https://example.com"
+
+# Author name (used in metadata)
+author = ""
+
+# Default image for social media previews (Open Graph, Social media cards)
+# Relative to assets/ directory
+default_og_image = "/assets/images/default-preview.png"
+
+
+[build]
+# Folders to completely ignore during build (checked at any path depth)
+# Files in these folders are never processed, regardless of frontmatter
+ignored_folders = ["_private"]
+
+# Where to redirect the site root (/)
+# This page should exist in _homepage/ with public: true
+home_redirect = "about"
+
+# Special directory for homepage content (deployed to site root instead of /wiki/)
+homepage_dir = "_homepage"
+
+# URL prefix for wiki content (e.g., "wiki" -> /wiki/PageName/)
+# Set to empty string "" to deploy wiki content at root
+wiki_prefix = "wiki"
+
+# Enable incremental builds (only rebuild changed files)
+incremental = true
+
+
+[visibility]
+# Foliate uses a two-tiered visibility system:
+#
+# In your markdown frontmatter:
+#   public: true      - Page is built and accessible via direct link
+#   published: true   - Page also appears in listings and search
+#
+# Examples:
+#   ---
+#   public: true
+#   ---
+#   → Built, accessible at /wiki/page-name/, but not in listings
+#
+#   ---
+#   public: true
+#   published: true
+#   ---
+#   → Built AND visible in listings, search, recent pages
+
+
+[nav]
+# Header navigation items
+# Each item needs: url, label
+# Optional: logo (image path), logo_alt (alt text)
+items = [
+    { url = "/about/", label = "About" },
+    { url = "/wiki/Home/", label = "Wiki" },
+]
+
+
+[footer]
+# Footer settings
+copyright_year = 2026
+author_name = ""
+author_link = "about/"
+
+
+[advanced]
+# Quarto preprocessing (for .qmd files)
+# Requires: uv add foliate[quarto]
+quarto_enabled = false
+quarto_python = ""  # Path to Python interpreter for Quarto, or empty for default

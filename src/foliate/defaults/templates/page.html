@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ page.title or page.path }} - {{ site_name }}{% endblock %}
+
+{% block content %}
+<header>
+    <h1>{{ page.title or page.path }}</h1>
+    {% if page and base_url != "/" %}
+    <p class="page-dates">
+        {% set creation_date = page.date if page.date else (page.published if page.published and page.published != True and page.published != 'True' and page.published != 'true' else None) %}
+        {% if creation_date %}
+            {% if page.file_modified and creation_date != page.file_modified %}
+                {{ creation_date }} → {{ page.file_modified }}
+            {% else %}
+                {{ creation_date }}
+            {% endif %}
+        {% elif page.file_modified %}
+            {{ page.file_modified }}
+        {% endif %}
+    </p>
+    {% endif %}
+</header>
+
+<section class="content">
+    {{ content|safe }}
+</section>
+
+
+{% if page.path == "Home" and recent_pages %}
+<section class="recent-pages">
+    <h2>Recent Pages</h2>
+    <ul class="page-list">
+        {% for recent_page in recent_pages %}
+        <li>
+            <span class="page-date">{{ recent_page.file_modified }}</span>
+            <a href="{{ recent_page.url }}">{{ recent_page.title or recent_page.path }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,80 @@
+[project]
+name = "foliate"
+version = "0.1.0"
+description = "Minimal static site generator for markdown vaults"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "YY Ahn" }
+]
+keywords = ["static-site-generator", "markdown", "wiki", "obsidian"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Site Management",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+
+dependencies = [
+    "python-frontmatter>=1.0.0",
+    "markdown>=3.4",
+    "jinja2>=3.1",
+    "click>=8.0",
+    "watchdog>=3.0",
+    "pygments>=2.15",
+    "markdown-katex>=202406.1035",
+    "mdx-wikilink-plus>=1.4",
+    "mdx-linkify>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+foliate = "foliate.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yy/foliate"
+Repository = "https://github.com/yy/foliate"
+Issues = "https://github.com/yy/foliate/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foliate"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+
+[tool.coverage.run]
+source = ["src/foliate"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]

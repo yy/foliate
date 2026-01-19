@@ -1,0 +1,38 @@
+# Python
+*.pyc
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual Environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts (when testing locally)
+.foliate/build/
+.foliate/cache/
+
+# uv
+.python-version
+uv.lock
+
+# Local development
+.envrc
+temporary_docs/
