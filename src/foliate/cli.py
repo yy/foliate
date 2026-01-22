@@ -39,6 +39,52 @@ items = [
 """
 
 
+def copy_default_templates(target_dir: Path, force: bool = False) -> list[str]:
+    """Copy default templates to target directory.
+
+    Returns list of created file paths.
+    """
+    import importlib.resources
+
+    created = []
+    try:
+        templates_pkg = importlib.resources.files("foliate.defaults.templates")
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        for item in templates_pkg.iterdir():
+            if item.is_file() and item.name.endswith(".html"):
+                target_file = target_dir / item.name
+                if force or not target_file.exists():
+                    target_file.write_text(item.read_text(encoding="utf-8"))
+                    created.append(str(target_file))
+    except (ImportError, TypeError):
+        pass
+    return created
+
+
+def copy_default_static(target_dir: Path, force: bool = False) -> list[str]:
+    """Copy default static files to target directory.
+
+    Returns list of created file paths.
+    """
+    import importlib.resources
+
+    created = []
+    try:
+        static_pkg = importlib.resources.files("foliate.defaults.static")
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        for item in static_pkg.iterdir():
+            if item.is_file() and not item.name.endswith(".py"):
+                target_file = target_dir / item.name
+                if force or not target_file.exists():
+                    target_file.write_bytes(item.read_bytes())
+                    created.append(str(target_file))
+    except (ImportError, TypeError):
+        pass
+    return created
+
+
 @click.group()
 @click.version_option()
 def main():
@@ -47,11 +93,13 @@ def main():
 
 
 @main.command()
-@click.option("--force", "-f", is_flag=True, help="Overwrite existing config")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing files")
 def init(force: bool):
     """Initialize a new foliate project."""
     foliate_dir = Path.cwd() / ".foliate"
     config_file = foliate_dir / "config.toml"
+    templates_dir = foliate_dir / "templates"
+    static_dir = foliate_dir / "static"
 
     if config_file.exists() and not force:
         click.echo("Error: .foliate/config.toml already exists", err=True)
@@ -60,10 +108,26 @@ def init(force: bool):
 
     foliate_dir.mkdir(exist_ok=True)
 
+    # Copy config
     default_config = get_default_config_content()
     config_file.write_text(default_config)
     click.echo(f"Created {config_file}")
-    click.echo("Run 'foliate build' to build your site")
+
+    # Copy templates
+    templates_created = copy_default_templates(templates_dir, force)
+    if templates_created:
+        click.echo(f"Created {templates_dir}/ ({len(templates_created)} templates)")
+
+    # Copy static files (CSS)
+    static_created = copy_default_static(static_dir, force)
+    if static_created:
+        click.echo(f"Created {static_dir}/ ({len(static_created)} files)")
+
+    click.echo("\nCustomize your site:")
+    click.echo("  - Edit .foliate/config.toml for site settings")
+    click.echo("  - Edit .foliate/static/main.css for styling")
+    click.echo("  - Edit .foliate/templates/*.html for layout")
+    click.echo("\nRun 'foliate build' to build your site")
 
 
 @main.command()
