@@ -36,3 +36,4 @@ uv.lock
 # Local development
 .envrc
 temporary_docs/
+.claude/

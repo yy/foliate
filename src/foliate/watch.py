@@ -33,7 +33,7 @@ class FoliateEventHandler(FileSystemEventHandler):
         self.last_rebuild_time = 0.0
 
         # Relevant file extensions
-        self.relevant_extensions = {".md", ".html", ".css", ".toml"} | {
+        self.relevant_extensions = {".md", ".qmd", ".html", ".css", ".toml"} | {
             e.lower() for e in SUPPORTED_ASSET_EXTENSIONS
         }
 
@@ -79,11 +79,22 @@ class FoliateEventHandler(FileSystemEventHandler):
 
         # Categorize changes
         needs_full_rebuild = False
+        qmd_files = []
+
         for file_path in changes:
             file_path = Path(file_path)
             if file_path.suffix in {".html", ".css", ".toml"}:
                 needs_full_rebuild = True
-                break
+            elif file_path.suffix == ".qmd":
+                qmd_files.append(file_path)
+
+        # Preprocess any changed .qmd files before rebuild
+        if qmd_files and self.config.advanced.quarto_enabled:
+            from .quarto import preprocess_quarto
+
+            for qmd_file in qmd_files:
+                print(f"  Preprocessing: {qmd_file.name}")
+                preprocess_quarto(self.config, single_file=qmd_file)
 
         self.rebuild_callback(force=needs_full_rebuild)
         self.last_rebuild_time = time.time()

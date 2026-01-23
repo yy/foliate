@@ -33,9 +33,13 @@ dependencies = [
     "markdown-katex>=202406.1035",
     "mdx-wikilink-plus>=1.4",
     "mdx-linkify>=2.1",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
+quarto = [
+    "quarto-prerender>=0.1",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

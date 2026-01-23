@@ -460,6 +460,14 @@ def build(
         print(f"Error: Vault directory '{vault_path}' does not exist")
         return 0
 
+    # Preprocess Quarto files (.qmd -> .md)
+    if config.advanced.quarto_enabled:
+        from .quarto import preprocess_quarto
+
+        if verbose:
+            print("Preprocessing Quarto files...")
+        preprocess_quarto(config, force=force_rebuild, verbose=verbose)
+
     # Setup build environment (force_rebuild may be updated if config/templates changed)
     build_dir, cache_file, build_cache, env, force_rebuild = _setup_build_environment(
         config, force_rebuild, incremental, verbose
@@ -496,6 +504,13 @@ def build(
 
     # Generate site files
     generate_site_files(build_dir, env, config, published_pages, public_pages)
+
+    # Post-process HTML to sanitize private links
+    from .postprocess import postprocess_links
+
+    if verbose:
+        print("Post-processing HTML files...")
+    postprocess_links(config, public_pages, verbose=verbose, single_page=single_page)
 
     # Save build cache (including global deps like config and templates)
     if incremental:
