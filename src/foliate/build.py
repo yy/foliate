@@ -131,10 +131,11 @@ def render_page_to_file(
     # Choose template
     template_name = "page.html"
 
-    # For Home page, prepare recent pages
+    # For home page, prepare recent pages
+    home_page_name = config.build.home_page
     recent_pages = None
-    if page["path"] == "Home" and published_pages:
-        filtered = [p for p in published_pages if p["path"] != "Home"]
+    if page["path"] == home_page_name and published_pages:
+        filtered = [p for p in published_pages if p["path"] != home_page_name]
         recent_pages = sorted(
             filtered, key=lambda x: x.get("file_mtime", 0), reverse=True
         )[:20]
@@ -316,15 +317,16 @@ def render_home_page(
     config: Config,
     verbose: bool = False,
 ) -> None:
-    """Re-render the Home page with the recent pages list."""
-    home_page = next((p for p in public_pages if p["path"] == "Home"), None)
+    """Re-render the home page with the recent pages list."""
+    home_page_name = config.build.home_page
+    home_page = next((p for p in public_pages if p["path"] == home_page_name), None)
     if not home_page:
         return
 
     wiki_base_url = config.base_urls["wiki"]
 
     if verbose:
-        print("  Re-rendering Home page with recent pages...")
+        print(f"  Re-rendering {home_page_name} page with recent pages...")
 
     if not home_page.get("html"):
         home_page["html"] = render_markdown(home_page["body"], wiki_base_url)

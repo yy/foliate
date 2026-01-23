@@ -37,7 +37,7 @@ def read_package_text(package: str, filename: str) -> str | None:
         resource = pkg.joinpath(filename)
         if resource.is_file():
             return resource.read_text(encoding="utf-8")
-    except (TypeError, FileNotFoundError):
+    except (TypeError, FileNotFoundError, ModuleNotFoundError):
         pass
     return None
 
@@ -57,7 +57,7 @@ def read_package_bytes(package: str, filename: str) -> bytes | None:
         resource = pkg.joinpath(filename)
         if resource.is_file():
             return resource.read_bytes()
-    except (TypeError, FileNotFoundError):
+    except (TypeError, FileNotFoundError, ModuleNotFoundError):
         pass
     return None
 
@@ -147,7 +147,7 @@ def get_package_file_path(package: str, filename: str) -> Path | None:
         resource = pkg.joinpath(filename)
         if resource.is_file():
             return Path(str(resource))
-    except (TypeError, FileNotFoundError):
+    except (TypeError, FileNotFoundError, ModuleNotFoundError):
         pass
     return None
 

@@ -1,13 +1,11 @@
 """Markdown processing utilities for foliate."""
 
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import frontmatter
 import markdown
-
-# Cache for Markdown converters (keyed by base_url)
-_markdown_cache: dict[str, markdown.Markdown] = {}
 
 # Markdown extensions configuration
 MARKDOWN_EXTENSIONS = [
@@ -39,6 +37,38 @@ EXTENSION_CONFIGS = {
     },
 }
 
+# Compiled patterns for extract_description (ordered by application)
+_DESCRIPTION_PATTERNS = [
+    # Remove YAML frontmatter
+    (re.compile(r"^---\s*\n.*?\n---\s*\n", re.DOTALL), ""),
+    # Remove code blocks
+    (re.compile(r"```.*?```", re.DOTALL), ""),
+    (re.compile(r"`[^`]+`"), ""),
+    # Remove images
+    (re.compile(r"!\[.*?\]\(.*?\)"), ""),
+    # Remove links but keep text
+    (re.compile(r"\[([^\]]+)\]\([^\)]+\)"), r"\1"),
+    # Remove wikilinks but keep text
+    (re.compile(r"\[\[([^\]]+)\]\]"), r"\1"),
+    # Remove headers
+    (re.compile(r"^#+\s+", re.MULTILINE), ""),
+    # Remove bold/italic markers
+    (re.compile(r"\*\*([^*]+)\*\*"), r"\1"),
+    (re.compile(r"\*([^*]+)\*"), r"\1"),
+    (re.compile(r"__([^_]+)__"), r"\1"),
+    (re.compile(r"_([^_]+)_"), r"\1"),
+    # Remove blockquotes
+    (re.compile(r"^>\s*", re.MULTILINE), ""),
+    # Remove horizontal rules
+    (re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE), ""),
+    # Remove HTML tags
+    (re.compile(r"<[^>]+>"), ""),
+    # Remove math blocks
+    (re.compile(r"\$\$.*?\$\$", re.DOTALL), ""),
+    (re.compile(r"\$[^$]+\$"), ""),
+]
+_WHITESPACE_PATTERN = re.compile(r"\s+")
+
 
 def extract_description(markdown_content: str, max_length: int = 160) -> str:
     """Extract a plain text description from markdown content.
@@ -55,49 +85,12 @@ def extract_description(markdown_content: str, max_length: int = 160) -> str:
 
     content = markdown_content
 
-    # Remove YAML frontmatter if present
-    content = re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
-
-    # Remove code blocks
-    content = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
-    content = re.sub(r"`[^`]+`", "", content)
-
-    # Remove images
-    content = re.sub(r"!\[.*?\]\(.*?\)", "", content)
-
-    # Remove links but keep text
-    content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)
-
-    # Remove wikilinks but keep text
-    content = re.sub(
-        r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", r"\2" if r"\2" else r"\1", content
-    )
-    content = re.sub(r"\[\[([^\]]+)\]\]", r"\1", content)
-
-    # Remove headers
-    content = re.sub(r"^#+\s+", "", content, flags=re.MULTILINE)
-
-    # Remove bold/italic markers
-    content = re.sub(r"\*\*([^*]+)\*\*", r"\1", content)
-    content = re.sub(r"\*([^*]+)\*", r"\1", content)
-    content = re.sub(r"__([^_]+)__", r"\1", content)
-    content = re.sub(r"_([^_]+)_", r"\1", content)
-
-    # Remove blockquotes
-    content = re.sub(r"^>\s*", "", content, flags=re.MULTILINE)
-
-    # Remove horizontal rules
-    content = re.sub(r"^[-*_]{3,}\s*$", "", content, flags=re.MULTILINE)
-
-    # Remove HTML tags
-    content = re.sub(r"<[^>]+>", "", content)
-
-    # Remove math blocks
-    content = re.sub(r"\$\$.*?\$\$", "", content, flags=re.DOTALL)
-    content = re.sub(r"\$[^$]+\$", "", content)
+    # Apply all stripping patterns
+    for pattern, replacement in _DESCRIPTION_PATTERNS:
+        content = pattern.sub(replacement, content)
 
     # Normalize whitespace
-    content = re.sub(r"\s+", " ", content).strip()
+    content = _WHITESPACE_PATTERN.sub(" ", content).strip()
 
     # Get first meaningful paragraph (at least 50 chars)
     paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
@@ -158,23 +151,20 @@ def parse_markdown_file(filepath: Path) -> tuple[dict, str]:
         return {}, ""
 
 
+@lru_cache(maxsize=8)
 def get_markdown_converter(base_url: str) -> markdown.Markdown:
     """Get or create a cached Markdown converter for the given base_url."""
-    global _markdown_cache
 
-    if base_url not in _markdown_cache:
-        extension_configs = {k: v.copy() for k, v in EXTENSION_CONFIGS.items()}
-        extension_configs["mdx_wikilink_plus"] = extension_configs[
-            "mdx_wikilink_plus"
-        ].copy()
-        extension_configs["mdx_wikilink_plus"]["base_url"] = base_url
+    extension_configs = {k: v.copy() for k, v in EXTENSION_CONFIGS.items()}
+    extension_configs["mdx_wikilink_plus"] = extension_configs[
+        "mdx_wikilink_plus"
+    ].copy()
+    extension_configs["mdx_wikilink_plus"]["base_url"] = base_url
 
-        _markdown_cache[base_url] = markdown.Markdown(
-            extensions=MARKDOWN_EXTENSIONS,
-            extension_configs=extension_configs,
-        )
-
-    return _markdown_cache[base_url]
+    return markdown.Markdown(
+        extensions=MARKDOWN_EXTENSIONS,
+        extension_configs=extension_configs,
+    )
 
 
 def render_markdown(content: str, base_url: str = "/wiki/") -> str:

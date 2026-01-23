@@ -53,6 +53,7 @@ class BuildConfig:
     home_redirect: str = "about"
     homepage_dir: str = "_homepage"
     wiki_prefix: str = "wiki"  # URL prefix for wiki content (e.g., /wiki/PageName/)
+    home_page: str = "Home"  # Wiki page that shows recent pages list
     incremental: bool = True
 
 
@@ -287,4 +288,5 @@ class Config:
                 "author_name": self.footer.author_name or self.site.author,
                 "author_link": self.footer.author_link,
             },
+            "home_page": self.build.home_page,
         }
