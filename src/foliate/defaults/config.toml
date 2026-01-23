@@ -76,6 +76,13 @@ author_name = ""
 author_link = "about/"
 
 
+[deploy]
+# Deployment settings for `foliate deploy`
+# method = "github-pages"  # Currently only github-pages is supported
+# target = "../my-site.github.io"  # Path to your GitHub Pages repository
+# exclude = ["CNAME", ".gitignore", ".gitmodules", ".claude"]  # Files to preserve in target
+
+
 [advanced]
 # Quarto preprocessing (for .qmd files)
 # Requires: uv add foliate[quarto]
