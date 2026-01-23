@@ -37,3 +37,4 @@ uv.lock
 .envrc
 temporary_docs/
 .claude/
+REFACTORING.md
