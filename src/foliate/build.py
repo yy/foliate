@@ -9,7 +9,12 @@ from typing import Optional
 from jinja2 import Environment
 
 from .assets import copy_static_assets, copy_user_assets
-from .cache import BUILD_CACHE_FILE, load_build_cache, needs_rebuild, save_build_cache
+from .cache import (
+    BUILD_CACHE_FILE,
+    load_build_cache,
+    needs_rebuild,
+    save_build_cache,
+)
 from .config import Config
 from .markdown_utils import (
     extract_description,
@@ -353,16 +358,31 @@ def generate_site_files(
 
 def _setup_build_environment(
     config: Config, force_rebuild: bool, incremental: bool, verbose: bool
-) -> tuple[Path, Path, dict, Environment]:
+) -> tuple[Path, Path, dict, Environment, bool]:
     """Setup build directories, load cache, and create Jinja environment.
 
     Returns:
-        Tuple of (build_dir, cache_file, build_cache, jinja_env)
+        Tuple of (build_dir, cache_file, build_cache, jinja_env, force_rebuild)
+        Note: force_rebuild may be updated if config/templates changed
     """
+    from .cache import check_global_deps_changed
+
     vault_path = config.vault_path
     build_dir = config.get_build_dir()
     cache_dir = config.get_cache_dir()
     cache_file = cache_dir / BUILD_CACHE_FILE
+
+    # Load build cache first to check global deps
+    build_cache = {}
+    if incremental and not force_rebuild:
+        build_cache = load_build_cache(cache_file)
+
+        # Check if config or templates changed - if so, force rebuild
+        if check_global_deps_changed(build_cache, config.config_path, vault_path):
+            if verbose:
+                print("Config or templates changed, forcing full rebuild...")
+            force_rebuild = True
+            build_cache = {}
 
     # Setup build directories
     if force_rebuild and build_dir.exists():
@@ -372,15 +392,10 @@ def _setup_build_environment(
 
     build_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load build cache
-    build_cache = {}
-    if incremental and not force_rebuild:
-        build_cache = load_build_cache(cache_file)
-
     # Setup Jinja2 environment with template loader
     env = Environment(loader=get_template_loader(vault_path))
 
-    return build_dir, cache_file, build_cache, env
+    return build_dir, cache_file, build_cache, env, force_rebuild
 
 
 def _print_build_summary(
@@ -445,8 +460,8 @@ def build(
         print(f"Error: Vault directory '{vault_path}' does not exist")
         return 0
 
-    # Setup build environment
-    build_dir, cache_file, build_cache, env = _setup_build_environment(
+    # Setup build environment (force_rebuild may be updated if config/templates changed)
+    build_dir, cache_file, build_cache, env, force_rebuild = _setup_build_environment(
         config, force_rebuild, incremental, verbose
     )
 
@@ -482,8 +497,11 @@ def build(
     # Generate site files
     generate_site_files(build_dir, env, config, published_pages, public_pages)
 
-    # Save build cache
+    # Save build cache (including global deps like config and templates)
     if incremental:
+        from .cache import update_global_deps_cache
+
+        update_global_deps_cache(new_build_cache, config.config_path, vault_path)
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         save_build_cache(cache_file, new_build_cache)
 
