@@ -206,5 +206,30 @@ def clean():
         click.echo("Nothing to clean")
 
 
+@main.command()
+@click.option(
+    "--dry-run", "-n", is_flag=True, help="Show what would be done without executing"
+)
+@click.option("--message", "-m", default=None, help="Custom commit message")
+def deploy(dry_run: bool, message: str):
+    """Deploy built site to configured target."""
+    from .deploy import deploy_github_pages
+
+    try:
+        config = Config.find_and_load()
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    if not config.deploy.target:
+        click.echo("Error: No deploy target configured", err=True)
+        click.echo("Add [deploy] section to .foliate/config.toml", err=True)
+        raise SystemExit(1)
+
+    success = deploy_github_pages(config, dry_run=dry_run, message=message)
+    if not success:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()

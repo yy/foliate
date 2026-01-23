@@ -55,6 +55,17 @@ class AdvancedConfig:
 
 
 @dataclass
+class DeployConfig:
+    """Deployment configuration."""
+
+    method: str = "github-pages"
+    target: str = ""  # Path to GitHub Pages repo
+    exclude: list[str] = field(
+        default_factory=lambda: ["CNAME", ".gitignore", ".gitmodules", ".claude"]
+    )
+
+
+@dataclass
 class Config:
     """Main configuration container."""
 
@@ -63,6 +74,7 @@ class Config:
     nav: list[NavItem] = field(default_factory=list)
     footer: FooterConfig = field(default_factory=FooterConfig)
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
+    deploy: DeployConfig = field(default_factory=DeployConfig)
 
     # Computed paths (set after loading)
     vault_path: Optional[Path] = None
@@ -158,6 +170,21 @@ class Config:
                     "quarto_enabled", config.advanced.quarto_enabled
                 ),
                 quarto_python=quarto_python,
+            )
+
+        # Load deploy config
+        if "deploy" in data:
+            import os
+
+            deploy_data = data["deploy"]
+            target = deploy_data.get("target", config.deploy.target)
+            # Expand ~ in paths
+            if target:
+                target = os.path.expanduser(target)
+            config.deploy = DeployConfig(
+                method=deploy_data.get("method", config.deploy.method),
+                target=target,
+                exclude=deploy_data.get("exclude", config.deploy.exclude),
             )
 
         return config
