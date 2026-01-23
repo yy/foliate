@@ -46,16 +46,23 @@ my-vault/
 ```
 src/foliate/
 ├── __init__.py
-├── __main__.py       # CLI entry point
-├── cli.py            # Click CLI commands
-├── build.py          # Core build logic
-├── config.py         # TOML config loading
-├── watch.py          # Watch mode with hot reload
-├── templates.py      # Template management
-└── defaults/         # Bundled defaults
-    ├── templates/    # Default Jinja2 templates
-    ├── static/       # Default CSS
-    └── config.toml   # Default config template
+├── __main__.py            # CLI entry point
+├── cli.py                 # Click CLI commands
+├── build.py               # Core build logic
+├── config.py              # TOML config loading
+├── watch.py               # Watch mode with hot reload
+├── templates.py           # Template management
+├── cache.py               # Incremental build cache
+├── assets.py              # Static/user asset handling
+├── markdown_utils.py      # Markdown processing utilities
+├── obsidian_image_size.py # Obsidian ![|width](url) syntax
+├── deploy.py              # GitHub Pages deployment
+├── quarto.py              # Quarto .qmd preprocessing
+├── postprocess.py         # HTML post-processing (link sanitization)
+└── defaults/              # Bundled defaults
+    ├── templates/         # Default Jinja2 templates
+    ├── static/            # Default CSS
+    └── config.toml        # Default config template
 ```
 
 ## Core Features
@@ -86,6 +93,24 @@ published: true   # Optional, shows in listings/search
 
 ### Incremental Builds
 Build cache tracks file modification times. Only changed files are rebuilt.
+Config and template changes trigger automatic full rebuilds.
+
+### Obsidian Image Syntax
+Supports Obsidian-style image sizing: `![alt|width](url)` → `<img width="width">`
+
+### Link Sanitization
+Post-processing removes wikilinks to private pages, converting them to plain text.
+Also cleans escaped dollar signs (`\$`) in content areas for KaTeX compatibility.
+
+### Quarto Support
+Optional preprocessing of `.qmd` files to `.md` using `quarto-prerender`.
+Enabled via `[advanced] quarto_enabled = true` in config.
+
+### Deployment
+Built-in `foliate deploy` command for GitHub Pages:
+- Rsyncs build output to target repository
+- Commits and pushes automatically
+- Supports dry-run mode
 
 ## CLI Commands
 
@@ -95,6 +120,8 @@ foliate build             # Build site to .foliate/build/
 foliate build --force     # Force full rebuild
 foliate build --serve     # Build and start local server
 foliate watch             # Watch mode (build + serve + auto-rebuild)
+foliate deploy            # Deploy to configured target (GitHub Pages)
+foliate deploy --dry-run  # Preview deployment without executing
 foliate clean             # Remove .foliate/build/ and .foliate/cache/
 ```
 
@@ -117,6 +144,15 @@ items = [
     { url = "/about/", label = "About" },
     { url = "/wiki/Home/", label = "Wiki" },
 ]
+
+[deploy]
+method = "github-pages"
+target = "../my-site.github.io"  # Path to GitHub Pages repo
+exclude = ["CNAME", ".gitignore", ".gitmodules", ".claude"]
+
+[advanced]
+quarto_enabled = false
+quarto_python = ""  # Optional: path to Python for Quarto
 ```
 
 ## Development Commands
@@ -127,6 +163,8 @@ uv sync --extra dev
 
 # Run tests
 uv run pytest
+# or
+make test
 
 # Run tests with coverage
 uv run pytest --cov=foliate
@@ -137,8 +175,11 @@ uv run ruff format .
 # Lint code
 uv run ruff check .
 
-# Build package
-uv build
+# Build package (cleans old dist files first)
+make build
+
+# Publish to PyPI
+make publish
 
 # Test CLI locally
 uv run foliate --help
@@ -153,11 +194,15 @@ uv run foliate --help
 - `click` - CLI framework
 - `watchdog` - File system watching
 - `pygments` - Syntax highlighting
+- `beautifulsoup4` - HTML post-processing
 
 ### Markdown Extensions
 - `markdown-katex` - Math rendering
 - `mdx-wikilink-plus` - Wiki-style links
 - `mdx-linkify` - Auto-link URLs
+
+### Optional (Quarto)
+- `quarto-prerender` - Quarto .qmd preprocessing
 
 ## Key Design Decisions
 

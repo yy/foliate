@@ -19,9 +19,12 @@ uvx foliate build  # Generate site to .foliate/build/
 - **Zero config** - Works out of the box with sensible defaults
 - **Vault-native** - Everything lives in `.foliate/` inside your vault
 - **Two-tiered visibility** - Control what's public vs. published
-- **Incremental builds** - Only rebuilds changed files
+- **Incremental builds** - Only rebuilds changed files (auto-rebuilds on config/template changes)
 - **Watch mode** - Auto-rebuild on file changes
 - **Works with any markdown** - Obsidian, Logseq, or plain markdown files
+- **Obsidian syntax** - Supports `![alt|width](url)` image sizing
+- **Quarto support** - Preprocess `.qmd` files (optional)
+- **Deploy command** - Built-in GitHub Pages deployment
 
 ## Quick Start
 
@@ -104,53 +107,68 @@ items = [
 foliate init      # Create .foliate/config.toml
 foliate build     # Build site
 foliate watch     # Build + serve + auto-rebuild
+foliate deploy    # Deploy to GitHub Pages
 foliate clean     # Remove build artifacts
 ```
 
 ### Options
 
 ```bash
-foliate build --force     # Force full rebuild
-foliate build --verbose   # Detailed output
-foliate build --serve     # Start server after build
-foliate watch --port 3000 # Custom port
+foliate build --force      # Force full rebuild
+foliate build --verbose    # Detailed output
+foliate build --serve      # Start server after build
+foliate watch --port 3000  # Custom port
+foliate deploy --dry-run   # Preview deploy without executing
+foliate deploy -m "msg"    # Custom commit message
 ```
 
 ## Deployment
 
-Foliate generates static files in `.foliate/build/`. Deploy anywhere that serves static files:
+Foliate generates static files in `.foliate/build/`. Deploy anywhere that serves static files.
+
+### GitHub Pages (Built-in)
+
+Configure in `.foliate/config.toml`:
+
+```toml
+[deploy]
+method = "github-pages"
+target = "../username.github.io"  # Path to your GitHub Pages repo
+exclude = ["CNAME", ".gitignore", ".gitmodules"]
+```
+
+Then deploy:
+
+```bash
+foliate deploy           # Sync, commit, and push
+foliate deploy --dry-run # Preview changes first
+```
 
 ### rsync (VPS/Server)
 ```bash
 rsync -avz --delete .foliate/build/ user@server:/var/www/mysite/
 ```
 
-### GitHub Pages
-
-**Separate repo** - e.g., push to a dedicated `username.github.io` repo:
-
-```bash
-# Clone your GitHub Pages repo alongside your vault
-git clone git@github.com:username/username.github.io.git ../username.github.io
-
-# Copy build output and push
-cp -r .foliate/build/* ../username.github.io/
-cd ../username.github.io && git add . && git commit -m "Deploy" && git push
-```
-
-**Same repo** - If your vault is the GitHub Pages repo:
-
-```bash
-# Option 1: Use docs/ folder (configure GitHub Pages to serve from docs/)
-cp -r .foliate/build/* docs/
-
-# Option 2: Use gh-pages branch (requires Node.js)
-npx gh-pages -d .foliate/build
-```
-
 ### Simple local copy
 ```bash
 cp -r .foliate/build/* /path/to/webserver/
+```
+
+## Quarto Support (Optional)
+
+Foliate can preprocess `.qmd` files (Quarto markdown) to `.md` before building:
+
+```bash
+# Install with quarto support
+pip install foliate[quarto]
+```
+
+Configure in `.foliate/config.toml`:
+
+```toml
+[advanced]
+quarto_enabled = true
+quarto_python = "/path/to/python"  # Optional: Python for Quarto
 ```
 
 ## License
