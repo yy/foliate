@@ -20,6 +20,7 @@ MARKDOWN_EXTENSIONS = [
     "smarty",
     "sane_lists",
     "toc",
+    "foliate.obsidian_image_size",
 ]
 
 EXTENSION_CONFIGS = {
