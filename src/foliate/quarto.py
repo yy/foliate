@@ -3,7 +3,6 @@
 Converts .qmd files to .md using quarto-prerender before the main build.
 """
 
-import os
 from pathlib import Path
 
 from .config import Config
@@ -49,9 +48,8 @@ def preprocess_quarto(
     cache_dir = config.get_cache_dir() / "quarto"
     assets_dir = pages_path / "assets" / "quarto"
 
-    quarto_python = config.advanced.quarto_python
-    if quarto_python:
-        quarto_python = os.path.expanduser(quarto_python)
+    # quarto_python is already expanded by config loading
+    quarto_python = config.advanced.quarto_python or None
 
     if single_file:
         # Process single file

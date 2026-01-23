@@ -1,9 +1,38 @@
 """Configuration loading and management for foliate."""
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Optional
+from typing import TypeVar
+
+T = TypeVar("T")
+
+
+def _load_dataclass(
+    cls: type[T],
+    data: dict,
+    defaults: T,
+    transforms: dict[str, callable] | None = None,
+) -> T:
+    """Load a dataclass from a dict with defaults and optional field transforms.
+
+    Args:
+        cls: The dataclass type to create
+        data: Dict of values from config file
+        defaults: Instance with default values
+        transforms: Optional dict mapping field names to transform functions
+
+    Returns:
+        New instance of cls with values from data, falling back to defaults
+    """
+    transforms = transforms or {}
+    kwargs = {}
+    for f in fields(cls):
+        value = data.get(f.name, getattr(defaults, f.name))
+        if f.name in transforms:
+            value = transforms[f.name](value)
+        kwargs[f.name] = value
+    return cls(**kwargs)
 
 
 @dataclass
@@ -33,8 +62,8 @@ class NavItem:
 
     url: str
     label: str
-    logo: Optional[str] = None
-    logo_alt: Optional[str] = None
+    logo: str | None = None
+    logo_alt: str | None = None
 
 
 @dataclass
@@ -77,8 +106,8 @@ class Config:
     deploy: DeployConfig = field(default_factory=DeployConfig)
 
     # Computed paths (set after loading)
-    vault_path: Optional[Path] = None
-    config_path: Optional[Path] = None
+    vault_path: Path | None = None
+    config_path: Path | None = None
 
     @classmethod
     def load(cls, config_path: Path) -> "Config":
@@ -100,34 +129,35 @@ class Config:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
 
-        # Load site config
+        from .resources import expand_path
+
+        # Load simple config sections using helper
         if "site" in data:
-            site_data = data["site"]
-            config.site = SiteConfig(
-                name=site_data.get("name", config.site.name),
-                url=site_data.get("url", config.site.url),
-                author=site_data.get("author", config.site.author),
-                default_og_image=site_data.get(
-                    "default_og_image", config.site.default_og_image
-                ),
-            )
+            config.site = _load_dataclass(SiteConfig, data["site"], config.site)
 
-        # Load build config
         if "build" in data:
-            build_data = data["build"]
-            config.build = BuildConfig(
-                ignored_folders=build_data.get(
-                    "ignored_folders", config.build.ignored_folders
-                ),
-                home_redirect=build_data.get(
-                    "home_redirect", config.build.home_redirect
-                ),
-                homepage_dir=build_data.get("homepage_dir", config.build.homepage_dir),
-                wiki_prefix=build_data.get("wiki_prefix", config.build.wiki_prefix),
-                incremental=build_data.get("incremental", config.build.incremental),
+            config.build = _load_dataclass(BuildConfig, data["build"], config.build)
+
+        if "footer" in data:
+            config.footer = _load_dataclass(FooterConfig, data["footer"], config.footer)
+
+        if "advanced" in data:
+            config.advanced = _load_dataclass(
+                AdvancedConfig,
+                data["advanced"],
+                config.advanced,
+                transforms={"quarto_python": expand_path},
             )
 
-        # Load nav items
+        if "deploy" in data:
+            config.deploy = _load_dataclass(
+                DeployConfig,
+                data["deploy"],
+                config.deploy,
+                transforms={"target": expand_path},
+            )
+
+        # Load nav items (special handling for list of items)
         if "nav" in data and "items" in data["nav"]:
             config.nav = [
                 NavItem(
@@ -139,58 +169,15 @@ class Config:
                 for item in data["nav"]["items"]
             ]
         else:
-            # Default nav items
             config.nav = [
                 NavItem(url="/about/", label="About"),
                 NavItem(url="/wiki/Home/", label="Wiki"),
             ]
 
-        # Load footer config
-        if "footer" in data:
-            footer_data = data["footer"]
-            config.footer = FooterConfig(
-                copyright_year=footer_data.get(
-                    "copyright_year", config.footer.copyright_year
-                ),
-                author_name=footer_data.get("author_name", config.footer.author_name),
-                author_link=footer_data.get("author_link", config.footer.author_link),
-            )
-
-        # Load advanced config
-        if "advanced" in data:
-            import os
-
-            adv_data = data["advanced"]
-            quarto_python = adv_data.get("quarto_python", config.advanced.quarto_python)
-            # Expand ~ in paths
-            if quarto_python:
-                quarto_python = os.path.expanduser(quarto_python)
-            config.advanced = AdvancedConfig(
-                quarto_enabled=adv_data.get(
-                    "quarto_enabled", config.advanced.quarto_enabled
-                ),
-                quarto_python=quarto_python,
-            )
-
-        # Load deploy config
-        if "deploy" in data:
-            import os
-
-            deploy_data = data["deploy"]
-            target = deploy_data.get("target", config.deploy.target)
-            # Expand ~ in paths
-            if target:
-                target = os.path.expanduser(target)
-            config.deploy = DeployConfig(
-                method=deploy_data.get("method", config.deploy.method),
-                target=target,
-                exclude=deploy_data.get("exclude", config.deploy.exclude),
-            )
-
         return config
 
     @classmethod
-    def find_and_load(cls, start_path: Optional[Path] = None) -> "Config":
+    def find_and_load(cls, start_path: Path | None = None) -> "Config":
         """Find and load config from .foliate/config.toml.
 
         Searches from start_path up to filesystem root for .foliate/config.toml.
@@ -216,7 +203,7 @@ class Config:
         return cls.load(config_path)
 
     @staticmethod
-    def find_config(start_path: Path) -> Optional[Path]:
+    def find_config(start_path: Path) -> Path | None:
         """Find .foliate/config.toml starting from start_path.
 
         Args:
@@ -250,7 +237,7 @@ class Config:
             return self.vault_path / ".foliate" / "cache"
         return Path.cwd() / ".foliate" / "cache"
 
-    def get_templates_dir(self) -> Optional[Path]:
+    def get_templates_dir(self) -> Path | None:
         """Get custom templates directory if it exists."""
         if self.vault_path:
             templates_dir = self.vault_path / ".foliate" / "templates"
@@ -258,7 +245,7 @@ class Config:
                 return templates_dir
         return None
 
-    def get_static_dir(self) -> Optional[Path]:
+    def get_static_dir(self) -> Path | None:
         """Get custom static directory if it exists."""
         if self.vault_path:
             static_dir = self.vault_path / ".foliate" / "static"

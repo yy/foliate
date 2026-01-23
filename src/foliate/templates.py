@@ -1,10 +1,10 @@
 """Template management for foliate."""
 
-import importlib.resources
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import BaseLoader, ChoiceLoader, FileSystemLoader, TemplateNotFound
+
+from .resources import iter_package_files, read_package_text
 
 
 class PackageLoader(BaseLoader):
@@ -14,27 +14,14 @@ class PackageLoader(BaseLoader):
         self.package = package
 
     def get_source(self, environment, template):
-        try:
-            pkg = importlib.resources.files(self.package)
-            template_file = pkg.joinpath(template)
-            if template_file.is_file():
-                source = template_file.read_text(encoding="utf-8")
-                # Return source, filename, and uptodate callable
-                return source, str(template_file), lambda: True
-        except (TypeError, FileNotFoundError):
-            pass
+        source = read_package_text(self.package, template)
+        if source is not None:
+            # Return source, filename, and uptodate callable
+            return source, f"{self.package}/{template}", lambda: True
         raise TemplateNotFound(template)
 
     def list_templates(self):
-        templates = []
-        try:
-            pkg = importlib.resources.files(self.package)
-            for item in pkg.iterdir():
-                if item.is_file() and item.name.endswith(".html"):
-                    templates.append(item.name)
-        except (TypeError, FileNotFoundError):
-            pass
-        return templates
+        return [name for name, _ in iter_package_files(self.package, suffix=".html")]
 
 
 def get_template_loader(vault_path: Path) -> ChoiceLoader:
@@ -63,7 +50,7 @@ def get_template_loader(vault_path: Path) -> ChoiceLoader:
     return ChoiceLoader(loaders)
 
 
-def get_template_path(name: str, vault_path: Path) -> Optional[Path]:
+def get_template_path(name: str, vault_path: Path) -> Path | None:
     """Get the resolved path to a template.
 
     Checks user templates first, then bundled defaults.
@@ -75,23 +62,15 @@ def get_template_path(name: str, vault_path: Path) -> Optional[Path]:
     Returns:
         Path to the template file, or None if not found
     """
+    from .resources import get_package_file_path
+
     # Check user templates first
     user_template = vault_path / ".foliate" / "templates" / name
     if user_template.exists():
         return user_template
 
     # Check bundled templates
-    try:
-        pkg = importlib.resources.files("foliate.defaults.templates")
-        template_file = pkg.joinpath(name)
-        if template_file.is_file():
-            # For package resources, return a path-like representation
-            # Note: This may not be a real filesystem path for zipped packages
-            return Path(str(template_file))
-    except (TypeError, FileNotFoundError):
-        pass
-
-    return None
+    return get_package_file_path("foliate.defaults.templates", name)
 
 
 def list_available_templates(vault_path: Path) -> dict[str, str]:
@@ -106,13 +85,8 @@ def list_available_templates(vault_path: Path) -> dict[str, str]:
     templates = {}
 
     # Check bundled templates first (will be overridden by user)
-    try:
-        pkg = importlib.resources.files("foliate.defaults.templates")
-        for item in pkg.iterdir():
-            if item.is_file() and item.name.endswith(".html"):
-                templates[item.name] = "bundled"
-    except (TypeError, FileNotFoundError):
-        pass
+    for name, _ in iter_package_files("foliate.defaults.templates", suffix=".html"):
+        templates[name] = "bundled"
 
     # Check user templates (override bundled)
     user_templates = vault_path / ".foliate" / "templates"

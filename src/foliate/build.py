@@ -4,7 +4,6 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import Environment
 
@@ -23,8 +22,6 @@ from .markdown_utils import (
     render_markdown,
 )
 from .templates import get_template_loader
-
-# Re-export cache functions for backward compatibility
 
 
 def is_path_ignored(
@@ -78,7 +75,7 @@ def create_page_object(
     meta: dict,
     markdown_content: str,
     render_html: bool = True,
-    file_path: Optional[Path] = None,
+    file_path: Path | None = None,
     base_url: str = "/wiki/",
 ) -> dict:
     """Create a page object with all necessary fields."""
@@ -117,7 +114,7 @@ def render_page_to_file(
     build_dir: Path,
     env: Environment,
     config: Config,
-    published_pages: Optional[list[dict]] = None,
+    published_pages: list[dict] | None = None,
     base_url: str = "/wiki/",
 ) -> None:
     """Render a page object to HTML file."""
@@ -161,43 +158,30 @@ def render_page_to_file(
     (page_dir / "index.html").write_text(html, encoding="utf-8")
 
 
-def process_markdown_files(
+def iter_public_md_files(
     vault_path: Path,
-    build_dir: Path,
-    env: Environment,
     config: Config,
-    build_cache: dict,
-    force_rebuild: bool,
-    incremental: bool,
-    single_page: Optional[str] = None,
+    single_page: str | None = None,
     verbose: bool = False,
-) -> tuple[list[dict], list[dict], dict, dict]:
-    """Process all markdown files and return page data and statistics."""
-    public_pages = []
-    published_pages = []
-    new_build_cache = {}
+):
+    """Iterate over public markdown files in the vault.
 
-    stats = {
-        "skipped_count": 0,
-        "rebuilt_count": 0,
-        "cached_count": 0,
-    }
-
+    Yields:
+        Tuples of (md_file, page_path, content_base_url, meta, markdown_content)
+        for each public markdown file.
+    """
     ignored_folders = config.build.ignored_folders
     homepage_dir = config.build.homepage_dir
     wiki_base_url = config.base_urls["wiki"]
-    wiki_dir = config.build.wiki_prefix.strip("/")
 
-    all_md_files = list(vault_path.glob("**/*.md"))
-
-    for md_file in all_md_files:
+    for md_file in vault_path.glob("**/*.md"):
         if is_path_ignored(md_file, vault_path, ignored_folders):
             continue
 
         rel_path = md_file.relative_to(vault_path)
         page_path = str(rel_path.with_suffix(""))
 
-        page_path, content_base_url, is_homepage_content = get_content_info(
+        page_path, content_base_url, _ = get_content_info(
             page_path, homepage_dir, wiki_base_url
         )
 
@@ -206,54 +190,118 @@ def process_markdown_files(
 
         meta, markdown_content = parse_markdown_file(md_file)
 
+        # Check visibility
         if not meta.get("public", False):
             if single_page and page_path == single_page:
                 if verbose:
                     print(f"  Building single page (overriding privacy): {page_path}")
             else:
-                if verbose:
-                    print(f"  Skipping private: {page_path}")
-                stats["skipped_count"] += 1
                 continue
 
-        if content_base_url == "/":
-            output_file = build_dir / page_path / "index.html"
-        else:
-            output_file = build_dir / wiki_dir / page_path / "index.html"
+        yield md_file, page_path, content_base_url, meta, markdown_content
 
-        if incremental and not needs_rebuild(
-            md_file, output_file, build_cache, force_rebuild
-        ):
-            stats["cached_count"] += 1
-            if verbose:
-                print(f"  Cached: {page_path}")
 
-            page = create_page_object(
-                page_path,
-                meta,
-                markdown_content,
-                render_html=False,
-                file_path=md_file,
-                base_url=content_base_url,
-            )
-            new_build_cache[str(md_file)] = md_file.stat().st_mtime
-        else:
-            stats["rebuilt_count"] += 1
-            if verbose:
-                print(f"  Building: {page_path}")
+def process_single_md_file(
+    md_file: Path,
+    page_path: str,
+    content_base_url: str,
+    meta: dict,
+    markdown_content: str,
+    build_dir: Path,
+    env: Environment,
+    config: Config,
+    build_cache: dict,
+    force_rebuild: bool,
+    incremental: bool,
+    verbose: bool = False,
+) -> tuple[dict, bool]:
+    """Process a single markdown file and return the page object.
 
-            page = create_page_object(
-                page_path,
-                meta,
-                markdown_content,
-                render_html=True,
-                file_path=md_file,
-                base_url=content_base_url,
-            )
-            render_page_to_file(page, build_dir, env, config, None, content_base_url)
-            new_build_cache[str(md_file)] = md_file.stat().st_mtime
+    Returns:
+        Tuple of (page_dict, was_rebuilt)
+    """
+    wiki_dir = config.build.wiki_prefix.strip("/")
 
+    # Determine output path
+    if content_base_url == "/":
+        output_file = build_dir / page_path / "index.html"
+    else:
+        output_file = build_dir / wiki_dir / page_path / "index.html"
+
+    # Check if rebuild needed
+    if incremental and not needs_rebuild(
+        md_file, output_file, build_cache, force_rebuild
+    ):
+        if verbose:
+            print(f"  Cached: {page_path}")
+        page = create_page_object(
+            page_path,
+            meta,
+            markdown_content,
+            render_html=False,
+            file_path=md_file,
+            base_url=content_base_url,
+        )
+        return page, False
+
+    # Rebuild
+    if verbose:
+        print(f"  Building: {page_path}")
+    page = create_page_object(
+        page_path,
+        meta,
+        markdown_content,
+        render_html=True,
+        file_path=md_file,
+        base_url=content_base_url,
+    )
+    render_page_to_file(page, build_dir, env, config, None, content_base_url)
+    return page, True
+
+
+def process_markdown_files(
+    vault_path: Path,
+    build_dir: Path,
+    env: Environment,
+    config: Config,
+    build_cache: dict,
+    force_rebuild: bool,
+    incremental: bool,
+    single_page: str | None = None,
+    verbose: bool = False,
+) -> tuple[list[dict], list[dict], dict, dict]:
+    """Process all markdown files and return page data and statistics."""
+    public_pages = []
+    published_pages = []
+    new_build_cache = {}
+    stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
+
+    for md_file, page_path, base_url, meta, content in iter_public_md_files(
+        vault_path, config, single_page, verbose
+    ):
+        page, was_rebuilt = process_single_md_file(
+            md_file,
+            page_path,
+            base_url,
+            meta,
+            content,
+            build_dir,
+            env,
+            config,
+            build_cache,
+            force_rebuild,
+            incremental,
+            verbose,
+        )
+
+        new_build_cache[str(md_file)] = md_file.stat().st_mtime
         public_pages.append(page)
+
+        if was_rebuilt:
+            stats["rebuilt_count"] += 1
+        else:
+            stats["cached_count"] += 1
+
         if meta.get("published", False):
             published_pages.append(page)
 
@@ -432,8 +480,8 @@ def _print_build_summary(
 def build(
     config: Config,
     force_rebuild: bool = False,
-    incremental: Optional[bool] = None,
-    single_page: Optional[str] = None,
+    incremental: bool | None = None,
+    single_page: str | None = None,
     verbose: bool = False,
 ) -> int:
     """Build static site from markdown pages.

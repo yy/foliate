@@ -1,27 +1,15 @@
 """Command-line interface for foliate."""
 
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 import click
 
 from .config import Config
+from .resources import copy_package_files, read_package_text
 
-
-def get_default_config_content() -> str:
-    """Get the default config.toml content from bundled defaults."""
-    import importlib.resources
-
-    try:
-        config_file = importlib.resources.files("foliate.defaults").joinpath(
-            "config.toml"
-        )
-        return config_file.read_text(encoding="utf-8")
-    except (TypeError, FileNotFoundError):
-        # Fallback to inline default
-        return """\
+# Inline fallback config in case package resources aren't available
+_FALLBACK_CONFIG = """\
 [site]
 name = "My Site"
 url = "https://example.com"
@@ -39,50 +27,22 @@ items = [
 """
 
 
+def get_default_config_content() -> str:
+    """Get the default config.toml content from bundled defaults."""
+    content = read_package_text("foliate.defaults", "config.toml")
+    return content if content else _FALLBACK_CONFIG
+
+
 def copy_default_templates(target_dir: Path, force: bool = False) -> list[str]:
-    """Copy default templates to target directory.
-
-    Returns list of created file paths.
-    """
-    import importlib.resources
-
-    created = []
-    try:
-        templates_pkg = importlib.resources.files("foliate.defaults.templates")
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        for item in templates_pkg.iterdir():
-            if item.is_file() and item.name.endswith(".html"):
-                target_file = target_dir / item.name
-                if force or not target_file.exists():
-                    target_file.write_text(item.read_text(encoding="utf-8"))
-                    created.append(str(target_file))
-    except (ImportError, TypeError):
-        pass
-    return created
+    """Copy default templates to target directory."""
+    return copy_package_files(
+        "foliate.defaults.templates", target_dir, suffix=".html", force=force
+    )
 
 
 def copy_default_static(target_dir: Path, force: bool = False) -> list[str]:
-    """Copy default static files to target directory.
-
-    Returns list of created file paths.
-    """
-    import importlib.resources
-
-    created = []
-    try:
-        static_pkg = importlib.resources.files("foliate.defaults.static")
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        for item in static_pkg.iterdir():
-            if item.is_file() and not item.name.endswith(".py"):
-                target_file = target_dir / item.name
-                if force or not target_file.exists():
-                    target_file.write_bytes(item.read_bytes())
-                    created.append(str(target_file))
-    except (ImportError, TypeError):
-        pass
-    return created
+    """Copy default static files to target directory."""
+    return copy_package_files("foliate.defaults.static", target_dir, force=force)
 
 
 @click.group()
@@ -156,14 +116,13 @@ def build(force: bool, verbose: bool, serve: bool, port: int):
         raise SystemExit(1)
 
     if serve:
+        from .resources import start_dev_server
+
         build_dir = config.get_build_dir()
         click.echo(f"\nStarting server at http://localhost:{port}")
         click.echo("Press Ctrl+C to stop")
         try:
-            subprocess.run(
-                [sys.executable, "-m", "http.server", str(port)],
-                cwd=str(build_dir),
-            )
+            start_dev_server(build_dir, port, background=False)
         except KeyboardInterrupt:
             click.echo("\nServer stopped")
 

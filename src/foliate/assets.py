@@ -1,9 +1,7 @@
 """Asset handling for foliate."""
 
-import importlib.resources
 import shutil
 from pathlib import Path
-from typing import Optional
 
 # Supported asset file extensions
 SUPPORTED_ASSET_EXTENSIONS = {
@@ -38,8 +36,7 @@ def copy_directory_incremental(
     src_dir: Path,
     target_dir: Path,
     force_rebuild: bool,
-    filter_extensions: Optional[set] = None,
-    label: str = "assets",
+    filter_extensions: set | None = None,
 ) -> None:
     """Copy a directory to build output with incremental update support.
 
@@ -48,7 +45,6 @@ def copy_directory_incremental(
         target_dir: Target directory to copy to
         force_rebuild: If True, always copy everything
         filter_extensions: Optional set of file extensions to include
-        label: Label for logging purposes
     """
     if force_rebuild or not target_dir.exists():
         if target_dir.exists():
@@ -78,20 +74,11 @@ def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -
         build_dir: Path to the build output directory
         force_rebuild: If True, always copy everything
     """
-    # Copy bundled static files first
-    try:
-        static_pkg = importlib.resources.files("foliate.defaults.static")
-        bundled_static = build_dir / "static"
-        bundled_static.mkdir(parents=True, exist_ok=True)
+    from .resources import copy_package_files
 
-        for item in static_pkg.iterdir():
-            # Skip Python files (like __init__.py)
-            if item.is_file() and not item.name.endswith(".py"):
-                target = bundled_static / item.name
-                if force_rebuild or not target.exists():
-                    target.write_bytes(item.read_bytes())
-    except (ImportError, TypeError):
-        pass
+    # Copy bundled static files first
+    bundled_static = build_dir / "static"
+    copy_package_files("foliate.defaults.static", bundled_static, force=force_rebuild)
 
     # Override with user static files if present
     user_static = vault_path / ".foliate" / "static"
@@ -100,7 +87,6 @@ def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -
             user_static,
             build_dir / "static",
             force_rebuild,
-            label="Static",
         )
 
 
@@ -119,5 +105,4 @@ def copy_user_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> 
             build_dir / "assets",
             force_rebuild,
             filter_extensions=SUPPORTED_ASSET_EXTENSIONS,
-            label="Assets",
         )

@@ -2,7 +2,6 @@
 
 import re
 from pathlib import Path
-from typing import Optional
 
 import frontmatter
 import markdown
@@ -116,7 +115,7 @@ def extract_description(markdown_content: str, max_length: int = 160) -> str:
     return content
 
 
-def extract_first_image(markdown_content: str) -> Optional[str]:
+def extract_first_image(markdown_content: str) -> str | None:
     """Extract the first image URL from markdown content.
 
     Args:
@@ -198,7 +197,7 @@ def render_markdown(content: str, base_url: str = "/wiki/") -> str:
 
     # Fix wikilinks from homepage content to wiki pages
     if base_url == "/":
-        html_content = fix_homepage_to_wiki_links(html_content, [])
+        html_content = fix_homepage_to_wiki_links(html_content)
 
     return html_content
 
@@ -208,13 +207,17 @@ def process_asset_paths(html_content: str) -> str:
     return re.sub(r"""((?:src|href)=["'])assets/""", r"\1/assets/", html_content)
 
 
-def fix_homepage_to_wiki_links(html_content: str, homepage_pages: list[str]) -> str:
-    """Fix wikilinks from homepage content to point to wiki pages."""
+def fix_homepage_to_wiki_links(html_content: str) -> str:
+    """Fix wikilinks from homepage content to point to wiki pages.
+
+    Links starting with / that aren't wiki/, assets/, or external URLs
+    get prefixed with /wiki to point to the wiki section.
+    """
     skip_prefixes = ("wiki/", "assets/", "http://", "https://", "#", "mailto:")
 
     def should_be_wiki_link(path: str) -> bool:
         clean_path = path.strip("/")
-        if not clean_path or clean_path.lower() in [p.lower() for p in homepage_pages]:
+        if not clean_path:
             return False
         if clean_path.startswith(skip_prefixes):
             return False

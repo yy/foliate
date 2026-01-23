@@ -182,35 +182,29 @@ class TestFixHomepageToWikiLinks:
     def test_converts_wiki_links(self):
         """Converts internal links to wiki paths."""
         html = '<a href="/Notes/Ideas/">Notes</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html, [])
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="/wiki/Notes/Ideas/">Notes</a>'
-
-    def test_preserves_homepage_links(self):
-        """Preserves links to known homepage pages."""
-        html = '<a href="/about/">About</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html, ["about"])
-        assert result == '<a href="/about/">About</a>'
 
     def test_preserves_wiki_links(self):
         """Doesn't double-prefix existing wiki links."""
         html = '<a href="/wiki/Notes/">Notes</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html, [])
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="/wiki/Notes/">Notes</a>'
 
     def test_preserves_asset_links(self):
         """Preserves asset links."""
         html = '<a href="/assets/doc.pdf">Download</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html, [])
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="/assets/doc.pdf">Download</a>'
 
     def test_preserves_external_links(self):
         """Preserves links starting with http/https."""
         html = '<a href="https://example.com">External</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html, [])
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="https://example.com">External</a>'
 
     def test_preserves_anchor_links(self):
         """Preserves anchor links."""
         html = '<a href="#section">Jump</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html, [])
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="#section">Jump</a>'

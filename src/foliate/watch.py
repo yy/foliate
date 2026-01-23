@@ -1,7 +1,5 @@
 """Watch mode for foliate - auto-rebuild on file changes."""
 
-import subprocess
-import sys
 import threading
 import time
 from datetime import datetime
@@ -119,13 +117,10 @@ def watch(config: Config, port: int = 8000) -> None:
     do_build(config=config, force_rebuild=False, verbose=False)
 
     # Start HTTP server in background
+    from .resources import start_dev_server
+
     build_dir = config.get_build_dir()
-    server_process = subprocess.Popen(
-        [sys.executable, "-m", "http.server", str(port)],
-        cwd=str(build_dir),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    server_process = start_dev_server(build_dir, port, background=True)
 
     print("=" * 60)
     print(f"Server started: http://localhost:{port}")
