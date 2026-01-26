@@ -38,3 +38,8 @@ uv.lock
 temporary_docs/
 .claude/
 REFACTORING.md
+TASKS.md
+
+# Wiggum
+.wiggum.toml
+*.loop_prompt
