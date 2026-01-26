@@ -42,4 +42,4 @@ TASKS.md
 
 # Wiggum
 .wiggum.toml
-*.loop_prompt
+LOOP-PROMPT.md
