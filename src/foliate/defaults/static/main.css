@@ -367,6 +367,30 @@ a[href^="https"]:not(.wikilink):hover {
   text-decoration: underline;
 }
 
+/* Header anchor links */
+.header-anchor {
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-left: 0.4em;
+  font-weight: normal;
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+h1:hover .header-anchor,
+h2:hover .header-anchor,
+h3:hover .header-anchor,
+h4:hover .header-anchor,
+h5:hover .header-anchor,
+h6:hover .header-anchor {
+  opacity: 1;
+}
+
+.header-anchor:hover {
+  color: var(--color-secondary);
+  text-decoration: none;
+}
+
 /* ============================================================================
    NAVIGATION
    ============================================================================ */

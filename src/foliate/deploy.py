@@ -45,6 +45,20 @@ def deploy_github_pages(
         click.echo(f"Error: Deploy target is not a git repository: {target}", err=True)
         return False
 
+    # Pull latest from remote to avoid conflicts when deploying from multiple machines
+    if not dry_run:
+        click.echo("Pulling latest from remote...")
+        pull_result = subprocess.run(
+            ["git", "pull", "--rebase", "--autostash"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+        )
+        if pull_result.returncode != 0:
+            # Pull failed - might be a new repo or no remote, which is fine
+            if "no tracking information" not in pull_result.stderr.lower():
+                click.echo(f"Warning: git pull failed: {pull_result.stderr.strip()}")
+
     # Build rsync command
     rsync_args = [
         "rsync",

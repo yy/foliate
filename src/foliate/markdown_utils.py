@@ -35,6 +35,11 @@ EXTENSION_CONFIGS = {
         "css_class": "highlight",
         "guess_lang": False,
     },
+    "toc": {
+        "permalink": "#",
+        "permalink_class": "header-anchor",
+        "permalink_title": "Link to this section",
+    },
 }
 
 # Compiled patterns for extract_description (ordered by application)

@@ -89,6 +89,7 @@ def process_html_file(
     public_pages: set[str],
     wiki_prefix: str = "wiki",
     verbose: bool = False,
+    build_dir: Path | None = None,
 ) -> bool:
     """Process a single HTML file to sanitize wikilinks.
 
@@ -119,7 +120,12 @@ def process_html_file(
                 if cleaned_dollars:
                     changes.append("escaped $")
                 change_summary = f" ({', '.join(changes)})" if changes else ""
-                print(f"  Sanitized: {html_file.name}{change_summary}")
+                # Show relative path from build dir, or parent folder name
+                if build_dir:
+                    display_path = html_file.parent.relative_to(build_dir)
+                else:
+                    display_path = html_file.parent.name
+                print(f"  Sanitized: {display_path}{change_summary}")
             return True
         return False
 
@@ -189,7 +195,7 @@ def postprocess_links(
 
     modified_count = 0
     for html_file in html_files:
-        if process_html_file(html_file, public_paths, wiki_prefix, verbose):
+        if process_html_file(html_file, public_paths, wiki_prefix, verbose, build_dir):
             modified_count += 1
 
     if not single_page and verbose:
