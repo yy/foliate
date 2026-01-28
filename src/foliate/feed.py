@@ -97,7 +97,10 @@ def get_published_date(page: dict) -> Optional[datetime]:
     # Fallback to file mtime
     file_mtime = page.get("file_mtime")
     if file_mtime:
-        return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+        try:
+            return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            pass
 
     return None
 
@@ -122,7 +125,10 @@ def get_modified_date(page: dict) -> Optional[datetime]:
     # Fallback to file mtime
     file_mtime = page.get("file_mtime")
     if file_mtime:
-        return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+        try:
+            return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            pass
 
     # Final fallback to published date
     return get_published_date(page)
@@ -381,7 +387,6 @@ def generate_feed(
 
     # Render feed template
     template = templates.get_template("feed.xml")
-    wiki_prefix = config.build.wiki_prefix.strip("/")
     wiki_url = f"{site_url}/{wiki_prefix}/" if wiki_prefix else f"{site_url}/"
 
     feed_xml = template.render(
