@@ -170,7 +170,8 @@ def clean():
     "--dry-run", "-n", is_flag=True, help="Show what would be done without executing"
 )
 @click.option("--message", "-m", default=None, help="Custom commit message")
-def deploy(dry_run: bool, message: str):
+@click.option("--build", "-b", is_flag=True, help="Build site before deploying")
+def deploy(dry_run: bool, message: str, build: bool):
     """Deploy built site to configured target."""
     from .deploy import deploy_github_pages
 
@@ -185,7 +186,9 @@ def deploy(dry_run: bool, message: str):
         click.echo("Add [deploy] section to .foliate/config.toml", err=True)
         raise SystemExit(1)
 
-    success = deploy_github_pages(config, dry_run=dry_run, message=message)
+    success = deploy_github_pages(
+        config, dry_run=dry_run, message=message, build_first=build
+    )
     if not success:
         raise SystemExit(1)
 

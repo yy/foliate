@@ -124,3 +124,164 @@ wiki_prefix = ""
 
         assert config.build.wiki_prefix == ""
         assert config.base_urls["wiki"] == "/"
+
+    def test_feed_config_defaults(self, tmp_path):
+        """Default feed config has sensible defaults."""
+        config_path = tmp_path / ".foliate" / "config.toml"
+
+        config = Config.load(config_path)
+
+        assert config.feed.enabled is True
+        assert config.feed.title == ""
+        assert config.feed.description == ""
+        assert config.feed.language == "en"
+        assert config.feed.items == 20
+        assert config.feed.full_content is True
+        assert config.feed.window == 30
+
+    def test_feed_config_custom(self, tmp_path):
+        """Custom feed config is loaded correctly."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[feed]
+enabled = false
+title = "My Custom Feed"
+description = "A description"
+language = "ko"
+items = 10
+full_content = false
+window = 7
+"""
+        )
+
+        config = Config.load(config_path)
+
+        assert config.feed.enabled is False
+        assert config.feed.title == "My Custom Feed"
+        assert config.feed.description == "A description"
+        assert config.feed.language == "ko"
+        assert config.feed.items == 10
+        assert config.feed.full_content is False
+        assert config.feed.window == 7
+
+
+class TestConfigValidation:
+    """Tests for config validation and warnings."""
+
+    def test_warns_on_unknown_key_in_site_section(self, tmp_path, capsys):
+        """Unknown keys in config produce warnings."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test"
+authro = "Typo User"
+"""
+        )
+
+        Config.load(config_path)
+        captured = capsys.readouterr()
+
+        assert "authro" in captured.err
+        assert "site" in captured.err
+
+    def test_warns_on_unknown_key_in_build_section(self, tmp_path, capsys):
+        """Unknown keys in build section produce warnings."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[build]
+ignored_folder = ["_private"]
+"""
+        )
+
+        Config.load(config_path)
+        captured = capsys.readouterr()
+
+        assert "ignored_folder" in captured.err
+        assert "build" in captured.err
+
+    def test_suggests_similar_key_for_typos(self, tmp_path, capsys):
+        """Suggests correct key when typo is close."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test"
+autor = "Typo"
+"""
+        )
+
+        Config.load(config_path)
+        captured = capsys.readouterr()
+
+        assert "autor" in captured.err
+        assert "author" in captured.err  # Suggestion
+
+    def test_warns_on_unknown_top_level_section(self, tmp_path, capsys):
+        """Unknown top-level sections produce warnings."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test"
+
+[syte]
+name = "Typo Section"
+"""
+        )
+
+        Config.load(config_path)
+        captured = capsys.readouterr()
+
+        assert "syte" in captured.err
+
+    def test_no_warnings_for_valid_config(self, tmp_path, capsys):
+        """Valid config produces no warnings."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Valid Site"
+url = "https://example.com"
+author = "Valid Author"
+"""
+        )
+
+        Config.load(config_path)
+        captured = capsys.readouterr()
+
+        assert captured.err == ""
+
+    def test_warns_on_multiple_unknown_keys(self, tmp_path, capsys):
+        """Multiple unknown keys each produce warnings."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test"
+foo = "bar"
+baz = "qux"
+"""
+        )
+
+        Config.load(config_path)
+        captured = capsys.readouterr()
+
+        assert "foo" in captured.err
+        assert "baz" in captured.err

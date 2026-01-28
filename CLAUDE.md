@@ -59,6 +59,7 @@ src/foliate/
 ├── deploy.py              # GitHub Pages deployment
 ├── quarto.py              # Quarto .qmd preprocessing
 ├── postprocess.py         # HTML post-processing (link sanitization)
+├── feed.py                # Atom feed generation
 └── defaults/              # Bundled defaults
     ├── templates/         # Default Jinja2 templates
     ├── static/            # Default CSS
@@ -101,6 +102,13 @@ Supports Obsidian-style image sizing: `![alt|width](url)` → `<img width="width
 ### Link Sanitization
 Post-processing removes wikilinks to private pages, converting them to plain text.
 Also cleans escaped dollar signs (`\$`) in content areas for KaTeX compatibility.
+
+### Atom Feed
+Generates `/feed.xml` for published wiki content. Distinguishes between:
+- **New pages**: Individual entries for recently published pages
+- **Updated pages**: Single digest entry listing recently modified pages
+
+Configure via `[feed]` section in config. Excludes `_homepage/` content.
 
 ### Quarto Support
 Optional preprocessing of `.qmd` files to `.md` using `quarto-prerender`.
@@ -149,6 +157,15 @@ items = [
 method = "github-pages"
 target = "../my-site.github.io"  # Path to GitHub Pages repo
 exclude = ["CNAME", ".gitignore", ".gitmodules", ".claude"]
+
+[feed]
+enabled = true       # Generate Atom feed (default: true)
+title = ""           # Feed title (defaults to site.name)
+description = ""     # Feed description
+language = "en"      # Language code (BCP 47)
+items = 20           # Max new page entries
+full_content = true  # Include full HTML content
+window = 30          # Days to include in feed
 
 [advanced]
 quarto_enabled = false
