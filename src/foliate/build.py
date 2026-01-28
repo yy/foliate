@@ -555,6 +555,14 @@ def build(
     # Generate site files
     generate_site_files(build_dir, env, config, published_pages, public_pages)
 
+    # Generate Atom feed
+    if config.feed.enabled and not single_page:
+        from .feed import generate_feed
+
+        if verbose:
+            print("Generating Atom feed...")
+        generate_feed(published_pages, config, env, build_dir)
+
     # Post-process HTML to sanitize private links
     from .postprocess import postprocess_links
 

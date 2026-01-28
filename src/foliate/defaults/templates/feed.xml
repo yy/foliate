@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="{{ config.feed.language }}">
+  <title>{{ feed_title }}</title>
+  <subtitle>{{ feed_description }}</subtitle>
+  <link href="{{ config.site.url }}/feed.xml" rel="self" type="application/atom+xml"/>
+  <link href="{{ config.site.url }}/" rel="alternate" type="text/html"/>
+  <id>{{ config.site.url }}/</id>
+  <updated>{{ feed_updated }}</updated>
+  {% if config.site.author %}
+  <author>
+    <name>{{ config.site.author }}</name>
+  </author>
+  {% endif %}
+  <generator uri="https://github.com/yyahn/foliate" version="{{ version }}">foliate</generator>
+
+  {% for item in new_items %}
+  <entry>
+    <title>{{ item.title | e }}</title>
+    <link href="{{ item.url }}" rel="alternate" type="text/html"/>
+    <id>{{ item.url }}</id>
+    <published>{{ item.published }}</published>
+    <updated>{{ item.updated }}</updated>
+    {% if full_content %}
+    <content type="html"><![CDATA[{{ item.content }}]]></content>
+    {% else %}
+    <summary>{{ item.summary | e }}</summary>
+    {% endif %}
+  </entry>
+  {% endfor %}
+
+  {% if updates_entry %}
+  <entry>
+    <title>Recently Updated Pages</title>
+    <link href="{{ wiki_url }}" rel="alternate" type="text/html"/>
+    <id>{{ config.site.url }}/feed/updates</id>
+    <published>{{ updates_entry.updated }}</published>
+    <updated>{{ updates_entry.updated }}</updated>
+    <content type="html"><![CDATA[{{ updates_entry.content }}]]></content>
+  </entry>
+  {% endif %}
+</feed>
