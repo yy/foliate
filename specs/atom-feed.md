@@ -105,10 +105,11 @@ window = 30             # Days to include in feed (for both new and updated)
 A page can appear in the feed if **all** of the following are true:
 
 1. Has `published: true` or `published: <date>` in frontmatter
-2. Is **not** in the `_homepage/` directory
-3. Is **not** in an ignored folder (e.g., `_private/`)
-4. Has `public: true` (required for the page to be built at all)
-5. Has a `published` or `modified` date within the configured `window`
+2. Has a **resolvable date** (see Date Handling below) - `published: true` alone is not sufficient
+3. Is **not** in the `_homepage/` directory
+4. Is **not** in an ignored folder (e.g., `_private/`)
+5. Has `public: true` (required for the page to be built at all)
+6. Has a `published` or `modified` date within the configured `window`
 
 ### Exclusion Rationale
 
@@ -132,7 +133,7 @@ Used to determine if a page is "new". Resolution order:
    date: 2024-03-15
    ```
 
-3. **File creation time** (fallback, if available)
+3. **File modification time** (fallback via filesystem mtime)
 
 ### Modification Date
 
@@ -232,160 +233,46 @@ This ensures rebuilding without content changes produces an identical feed, whic
 - Always contains a list of links with modification dates
 - No full content (just the digest list)
 
+### Empty Feed Behavior
+
+If no pages fall within the configured `window` (no new pages AND no updated pages), **no `feed.xml` is generated**. This is intentional:
+
+- Avoids generating empty feeds that provide no value
+- Feed readers will report 404, signaling the feed is inactive
+- Once new content is published, the feed reappears
+
+If you need a feed.xml to always exist, ensure at least one page has a date within the window.
+
 ## Autodiscovery
 
 Add a `<link>` tag to `<head>` in `layout.html` for feed autodiscovery:
 
 ```html
-{% if config.feed.enabled %}
-<link rel="alternate" type="application/atom+xml" title="{{ config.feed.title or config.site.name }}" href="{{ config.site.url }}/feed.xml">
+{% if feed_enabled %}
+<link rel="alternate" type="application/atom+xml" title="{{ feed_title }}" href="{{ site_url }}/feed.xml">
 {% endif %}
 ```
 
+Note: Config values are flattened via `to_template_context()` before being passed to templates.
+
 ## Implementation
 
-### New Files
+### Files
 
-#### `src/foliate/feed.py`
+| File | Purpose |
+|------|---------|
+| `src/foliate/feed.py` | Feed generation logic, page classification, date handling |
+| `src/foliate/defaults/templates/feed.xml` | Jinja2 template for Atom output |
+| `src/foliate/config.py` | `FeedConfig` dataclass with defaults |
+| `src/foliate/build.py` | Integration point (calls `generate_feed()`) |
+| `src/foliate/defaults/templates/layout.html` | Autodiscovery `<link>` tag |
 
-```python
-"""Atom feed generation."""
+### Key Functions
 
-from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Optional
-from pathlib import Path
-
-@dataclass
-class FeedItem:
-    """A single item in a feed."""
-    title: str
-    url: str
-    content: str
-    published: datetime
-    updated: datetime
-    summary: Optional[str] = None
-
-def generate_feed(
-    pages: list[dict],
-    config: "Config",
-    templates: "TemplateManager",
-    output_dir: Path
-) -> None:
-    """Generate Atom feed with new pages and updates digest."""
-    ...
-
-def classify_pages(
-    pages: list[dict],
-    window_days: int
-) -> tuple[list[dict], list[dict]]:
-    """
-    Classify pages into 'new' and 'updated' categories.
-
-    Returns:
-        (new_pages, updated_pages) - both sorted by date descending
-    """
-    ...
-
-def get_published_date(page: dict) -> Optional[datetime]:
-    """Extract publication date from page."""
-    ...
-
-def get_modified_date(page: dict) -> datetime:
-    """Extract modification date from page."""
-    ...
-
-def format_atom_date(dt: datetime) -> str:
-    """Format datetime as RFC 3339 for Atom."""
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-def generate_updates_digest(updated_pages: list[dict], site_url: str) -> str:
-    """Generate HTML content for the updates digest entry."""
-    ...
-```
-
-#### `src/foliate/defaults/templates/feed.xml`
-
-Jinja2 template for Atom feed:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="{{ config.feed.language }}">
-  <title>{{ feed_title }}</title>
-  <subtitle>{{ feed_description }}</subtitle>
-  <link href="{{ config.site.url }}/feed.xml" rel="self" type="application/atom+xml"/>
-  <link href="{{ config.site.url }}/" rel="alternate" type="text/html"/>
-  <id>{{ config.site.url }}/</id>
-  <updated>{{ feed_updated }}</updated>
-  {% if config.site.author %}
-  <author>
-    <name>{{ config.site.author }}</name>
-  </author>
-  {% endif %}
-  <generator uri="https://github.com/yyahn/foliate" version="{{ version }}">foliate</generator>
-
-  {% for item in new_items %}
-  <entry>
-    <title>{{ item.title | e }}</title>
-    <link href="{{ item.url }}" rel="alternate" type="text/html"/>
-    <id>{{ item.url }}</id>
-    <published>{{ item.published }}</published>
-    <updated>{{ item.updated }}</updated>
-    {% if full_content %}
-    <content type="html"><![CDATA[{{ item.content }}]]></content>
-    {% else %}
-    <summary>{{ item.summary | e }}</summary>
-    {% endif %}
-  </entry>
-  {% endfor %}
-
-  {% if updates_entry %}
-  <entry>
-    <title>Recently Updated Pages</title>
-    <link href="{{ config.site.url }}/{{ config.build.wiki_prefix }}/" rel="alternate" type="text/html"/>
-    <id>{{ config.site.url }}/feed/updates</id>
-    <updated>{{ updates_entry.updated }}</updated>
-    <content type="html"><![CDATA[{{ updates_entry.content }}]]></content>
-  </entry>
-  {% endif %}
-</feed>
-```
-
-### Modified Files
-
-#### `src/foliate/config.py`
-
-Add `FeedConfig` dataclass:
-
-```python
-@dataclass
-class FeedConfig:
-    enabled: bool = True
-    title: str = ""
-    description: str = ""
-    language: str = "en"
-    items: int = 20
-    full_content: bool = True
-    window: int = 30
-```
-
-Update `Config` class to include `feed: FeedConfig`.
-
-#### `src/foliate/build.py`
-
-In `generate_site_files()`, add call to `generate_feed()`:
-
-```python
-from foliate.feed import generate_feed
-
-# After generating pages...
-if config.feed.enabled:
-    generate_feed(published_pages, config, templates, output_dir)
-```
-
-#### `src/foliate/defaults/templates/layout.html`
-
-Add autodiscovery `<link>` tag in `<head>`.
+- `generate_feed()` - Main entry point, orchestrates feed generation
+- `classify_pages()` - Separates pages into "new" vs "updated" categories
+- `get_published_date()` / `get_modified_date()` - Date resolution with fallbacks
+- `generate_updates_digest()` - Creates HTML content for the digest entry
 
 ## Testing
 
@@ -427,11 +314,20 @@ Add autodiscovery `<link>` tag in `<head>`.
 Generated feeds should validate against:
 - [W3C Feed Validation Service](https://validator.w3.org/feed/)
 
+## Known Limitations
+
+- **Same-day ordering**: Pages with date-only values (no time component) all normalize to midnight UTC. If multiple pages share the same date, their ordering in the feed is undefined. Add time components for precise ordering.
+
+- **CDATA content**: Feed content uses CDATA sections. If page content contains the literal string `]]>`, it could break the XML. This is rare in practice.
+
+- **No updates limit**: The updates digest entry has no limit on how many pages it lists. If many pages are frequently updated, the digest could become long.
+
 ## Future Considerations
 
-Not in initial implementation, but possible future enhancements:
+Possible future enhancements:
 
 - **Categories/tags**: Map frontmatter tags to Atom categories
 - **Multiple feeds**: Per-folder or per-tag feeds
 - **Custom templates**: User-overridable feed template in `.foliate/templates/`
 - **JSON Feed**: Additional format (`/feed.json`) per [JSON Feed spec](https://jsonfeed.org/)
+- **Per-entry author**: Support for page-specific author in frontmatter
