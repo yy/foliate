@@ -203,6 +203,39 @@ make publish
 uv run foliate --help
 ```
 
+## Releasing a New Version
+
+### Version Locations (must be kept in sync)
+- `pyproject.toml` line 3: `version = "X.Y.Z"`
+- `src/foliate/__init__.py` line 3: `__version__ = "X.Y.Z"`
+
+### Release Steps
+
+```bash
+# 1. Update version in both files (keep them in sync!)
+#    - pyproject.toml
+#    - src/foliate/__init__.py
+
+# 2. Commit the version bump
+git add pyproject.toml src/foliate/__init__.py
+git commit -m "Bump version to X.Y.Z"
+
+# 3. Create and push git tag
+git tag vX.Y.Z
+git push origin main --tags
+
+# 4. Build the package (removes old dist files automatically)
+make build
+
+# 5. Publish to PyPI (user runs this manually)
+uv publish
+```
+
+### Version Numbering
+- **Patch** (0.0.X): Bug fixes, minor improvements
+- **Minor** (0.X.0): New features, backward compatible
+- **Major** (X.0.0): Breaking changes
+
 ## Dependencies
 
 ### Core
