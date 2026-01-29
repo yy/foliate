@@ -152,7 +152,9 @@ def parse_markdown_file(filepath: Path) -> tuple[dict, str]:
             post = frontmatter.load(f)
         return dict(post.metadata), post.content
     except Exception as e:
-        print(f"Warning: YAML parsing error in {filepath}: {e}")
+        from .logging import warning
+
+        warning(f"YAML parsing error in {filepath}: {e}")
         return {}, ""
 
 

@@ -50,6 +50,7 @@ src/foliate/
 ├── cli.py                 # Click CLI commands
 ├── build.py               # Core build logic
 ├── config.py              # TOML config loading
+├── logging.py             # Centralized logging with configurable verbosity
 ├── watch.py               # Watch mode with hot reload
 ├── templates.py           # Template management
 ├── cache.py               # Incremental build cache

@@ -231,7 +231,7 @@ This is a test page.
         )
 
         config = Config.load(config_path)
-        result = build.build(config=config, force_rebuild=True, verbose=False)
+        result = build.build(config=config, force_rebuild=True)
 
         assert result >= 1
         assert (
@@ -272,7 +272,7 @@ About page content.
         )
 
         config = Config.load(config_path)
-        result = build.build(config=config, force_rebuild=True, verbose=False)
+        result = build.build(config=config, force_rebuild=True)
 
         assert result >= 1
         # Homepage content should be at root, not /wiki/
@@ -304,7 +304,7 @@ This should not be built.
         )
 
         config = Config.load(config_path)
-        result = build.build(config=config, force_rebuild=True, verbose=False)
+        result = build.build(config=config, force_rebuild=True)
 
         # No pages should be built (only the secret one exists and it's ignored)
         assert result == 0

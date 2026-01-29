@@ -33,7 +33,6 @@ def sanitize_wikilinks(
     html_content: str,
     public_pages: set[str],
     wiki_prefix: str = "wiki",
-    verbose: bool = False,
 ) -> tuple[str, bool, int, bool]:
     """Remove wikilinks to private pages, convert to plain text.
 
@@ -41,12 +40,13 @@ def sanitize_wikilinks(
         html_content: HTML content to process
         public_pages: Set of public page paths
         wiki_prefix: URL prefix for wiki content
-        verbose: Enable verbose output
 
     Returns:
         Tuple of (sanitized_content, was_modified, removed_links_count, cleaned_dollars)
     """
     from bs4 import NavigableString
+
+    from .logging import debug
 
     soup = BeautifulSoup(html_content, "html.parser")
     modified = False
@@ -61,8 +61,7 @@ def sanitize_wikilinks(
 
         if wiki_path and wiki_path not in public_pages:
             # This is a link to a private page - unwrap to preserve inner HTML
-            if verbose:
-                print(f"    Removed private link: {wiki_path} -> {link.get_text()}")
+            debug(f"    Removed private link: {wiki_path} -> {link.get_text()}")
             link.unwrap()
             modified = True
             removed_links_count += 1
@@ -78,8 +77,8 @@ def sanitize_wikilinks(
         modified = True
         cleaned_dollars = True
 
-    if cleaned_dollars and verbose:
-        print("    Cleaned escaped dollar signs")
+    if cleaned_dollars:
+        debug("    Cleaned escaped dollar signs")
 
     return str(soup), modified, removed_links_count, cleaned_dollars
 
@@ -88,7 +87,6 @@ def process_html_file(
     html_file: Path,
     public_pages: set[str],
     wiki_prefix: str = "wiki",
-    verbose: bool = False,
     build_dir: Path | None = None,
 ) -> bool:
     """Process a single HTML file to sanitize wikilinks.
@@ -97,47 +95,47 @@ def process_html_file(
         html_file: Path to HTML file
         public_pages: Set of public page paths
         wiki_prefix: URL prefix for wiki content
-        verbose: Enable verbose output
+        build_dir: Build directory for computing relative paths
 
     Returns:
         True if file was modified, False otherwise
     """
+    from .logging import debug, error
+
     try:
         content = html_file.read_text(encoding="utf-8")
 
         sanitized_content, modified, removed_links_count, cleaned_dollars = (
-            sanitize_wikilinks(content, public_pages, wiki_prefix, verbose)
+            sanitize_wikilinks(content, public_pages, wiki_prefix)
         )
 
         if modified:
             html_file.write_text(sanitized_content, encoding="utf-8")
 
-            # Build a concise summary for non-verbose mode
-            if not verbose:
-                changes = []
-                if removed_links_count > 0:
-                    changes.append(f"{removed_links_count} private links")
-                if cleaned_dollars:
-                    changes.append("escaped $")
-                change_summary = f" ({', '.join(changes)})" if changes else ""
-                # Show relative path from build dir, or parent folder name
-                if build_dir:
-                    display_path = html_file.parent.relative_to(build_dir)
-                else:
-                    display_path = html_file.parent.name
-                print(f"  Sanitized: {display_path}{change_summary}")
+            # Build a concise summary
+            changes = []
+            if removed_links_count > 0:
+                changes.append(f"{removed_links_count} private links")
+            if cleaned_dollars:
+                changes.append("escaped $")
+            change_summary = f" ({', '.join(changes)})" if changes else ""
+            # Show relative path from build dir, or parent folder name
+            if build_dir:
+                display_path = html_file.parent.relative_to(build_dir)
+            else:
+                display_path = html_file.parent.name
+            debug(f"  Sanitized: {display_path}{change_summary}")
             return True
         return False
 
     except Exception as e:
-        print(f"  Error processing {html_file}: {e}")
+        error(f"Processing {html_file}: {e}")
         return False
 
 
 def postprocess_links(
     config: Config,
     public_pages: list[dict],
-    verbose: bool = False,
     single_page: str | None = None,
 ) -> bool:
     """Post-process HTML files to sanitize wikilinks.
@@ -145,24 +143,25 @@ def postprocess_links(
     Args:
         config: Foliate configuration
         public_pages: List of public page dicts from build
-        verbose: Whether to print detailed messages
         single_page: If specified, only process this page (used in watch mode)
 
     Returns:
         True if successful, False otherwise
     """
+    from .logging import debug, error, warning
+
     build_dir = config.get_build_dir()
     wiki_prefix = config.build.wiki_prefix.strip("/")
 
     if not build_dir.exists():
-        print(f"Error: Build directory '{build_dir}' does not exist")
+        error(f"Build directory '{build_dir}' does not exist")
         return False
 
     # Extract public page paths into a set for fast lookup
     public_paths = {page["path"] for page in public_pages}
 
-    if not single_page and verbose:
-        print(f"Post-processing with {len(public_paths)} public pages...")
+    if not single_page:
+        debug(f"Post-processing with {len(public_paths)} public pages...")
 
     # Find HTML files to process
     html_files: list[Path] = []
@@ -180,8 +179,7 @@ def postprocess_links(
                 break
 
         if not html_files:
-            if verbose:
-                print(f"  Warning: Could not find HTML file for page '{single_page}'")
+            warning(f"Could not find HTML file for page '{single_page}'")
             return False
     else:
         # Find all HTML files in the build directory (excluding static)
@@ -190,15 +188,14 @@ def postprocess_links(
             if not str(relative_path).startswith("static/"):
                 html_files.append(html_file)
 
-        if verbose:
-            print(f"  Processing {len(html_files)} HTML files...")
+        debug(f"  Processing {len(html_files)} HTML files...")
 
     modified_count = 0
     for html_file in html_files:
-        if process_html_file(html_file, public_paths, wiki_prefix, verbose, build_dir):
+        if process_html_file(html_file, public_paths, wiki_prefix, build_dir):
             modified_count += 1
 
-    if not single_page and verbose:
-        print(f"  Post-processing complete: {modified_count} files modified")
+    if not single_page:
+        debug(f"  Post-processing complete: {modified_count} files modified")
 
     return True

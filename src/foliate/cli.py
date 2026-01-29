@@ -98,6 +98,10 @@ def init(force: bool):
 def build(force: bool, verbose: bool, serve: bool, port: int):
     """Build the static site."""
     from .build import build as do_build
+    from .logging import setup_logging
+
+    # Initialize logging based on verbosity
+    setup_logging(verbose=verbose)
 
     try:
         config = Config.find_and_load()
@@ -108,7 +112,6 @@ def build(force: bool, verbose: bool, serve: bool, port: int):
     result = do_build(
         config=config,
         force_rebuild=force,
-        verbose=verbose,
     )
 
     if result == 0:
@@ -129,7 +132,8 @@ def build(force: bool, verbose: bool, serve: bool, port: int):
 
 @main.command()
 @click.option("--port", "-p", default=8000, help="Server port")
-def watch(port: int):
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+def watch(port: int, verbose: bool):
     """Watch for changes and rebuild automatically."""
     from .watch import watch as do_watch
 
@@ -139,7 +143,7 @@ def watch(port: int):
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    do_watch(config=config, port=port)
+    do_watch(config=config, port=port, verbose=verbose)
 
 
 @main.command()
@@ -171,7 +175,8 @@ def clean():
 )
 @click.option("--message", "-m", default=None, help="Custom commit message")
 @click.option("--build", "-b", is_flag=True, help="Build site before deploying")
-def deploy(dry_run: bool, message: str, build: bool):
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+def deploy(dry_run: bool, message: str, build: bool, verbose: bool):
     """Deploy built site to configured target."""
     from .deploy import deploy_github_pages
 
@@ -187,7 +192,7 @@ def deploy(dry_run: bool, message: str, build: bool):
         raise SystemExit(1)
 
     success = deploy_github_pages(
-        config, dry_run=dry_run, message=message, build_first=build
+        config, dry_run=dry_run, message=message, build_first=build, verbose=verbose
     )
     if not success:
         raise SystemExit(1)

@@ -6,12 +6,12 @@ Converts .qmd files to .md using quarto-prerender before the main build.
 from pathlib import Path
 
 from .config import Config
+from .logging import debug
 
 
 def preprocess_quarto(
     config: Config,
     force: bool = False,
-    verbose: bool = False,
     single_file: Path | None = None,
 ) -> dict[str, str]:
     """Preprocess .qmd files to .md using quarto-prerender.
@@ -19,7 +19,6 @@ def preprocess_quarto(
     Args:
         config: Foliate configuration
         force: Force re-render all .qmd files
-        verbose: Enable verbose output
         single_file: Only process this specific .qmd file (Path object)
 
     Returns:
@@ -31,13 +30,11 @@ def preprocess_quarto(
     try:
         from quarto_prerender import is_quarto_available, process_all, render_qmd
     except ImportError:
-        if verbose:
-            print("  quarto-prerender not installed, skipping .qmd preprocessing")
+        debug("quarto-prerender not installed, skipping .qmd preprocessing")
         return {}
 
     if not is_quarto_available():
-        if verbose:
-            print("  Quarto CLI not found, skipping .qmd preprocessing")
+        debug("Quarto CLI not found, skipping .qmd preprocessing")
         return {}
 
     vault_path = config.vault_path
@@ -68,7 +65,7 @@ def preprocess_quarto(
                 cache_dir=cache_dir,
                 assets_dir=assets_dir,
                 python=quarto_python,
-                verbose=verbose,
+                verbose=False,
             )
             if result:
                 return {str(qmd_file): result}
@@ -81,5 +78,5 @@ def preprocess_quarto(
         assets_dir=assets_dir,
         python=quarto_python,
         force=force,
-        verbose=verbose,
+        verbose=False,
     )

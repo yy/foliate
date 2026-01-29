@@ -163,7 +163,6 @@ def iter_public_md_files(
     vault_path: Path,
     config: Config,
     single_page: str | None = None,
-    verbose: bool = False,
 ):
     """Iterate over public markdown files in the vault.
 
@@ -171,6 +170,8 @@ def iter_public_md_files(
         Tuples of (md_file, page_path, content_base_url, meta, markdown_content)
         for each public markdown file.
     """
+    from .logging import debug
+
     ignored_folders = config.build.ignored_folders
     homepage_dir = config.build.homepage_dir
     wiki_base_url = config.base_urls["wiki"]
@@ -194,8 +195,7 @@ def iter_public_md_files(
         # Check visibility
         if not meta.get("public", False):
             if single_page and page_path == single_page:
-                if verbose:
-                    print(f"  Building single page (overriding privacy): {page_path}")
+                debug(f"  Building single page (overriding privacy): {page_path}")
             else:
                 continue
 
@@ -214,13 +214,14 @@ def process_single_md_file(
     build_cache: dict,
     force_rebuild: bool,
     incremental: bool,
-    verbose: bool = False,
 ) -> tuple[dict, bool]:
     """Process a single markdown file and return the page object.
 
     Returns:
         Tuple of (page_dict, was_rebuilt)
     """
+    from .logging import debug
+
     wiki_dir = config.build.wiki_prefix.strip("/")
 
     # Determine output path
@@ -233,8 +234,7 @@ def process_single_md_file(
     if incremental and not needs_rebuild(
         md_file, output_file, build_cache, force_rebuild
     ):
-        if verbose:
-            print(f"  Cached: {page_path}")
+        debug(f"  Cached: {page_path}")
         page = create_page_object(
             page_path,
             meta,
@@ -246,8 +246,7 @@ def process_single_md_file(
         return page, False
 
     # Rebuild
-    if verbose:
-        print(f"  Building: {page_path}")
+    debug(f"  Building: {page_path}")
     page = create_page_object(
         page_path,
         meta,
@@ -269,7 +268,6 @@ def process_markdown_files(
     force_rebuild: bool,
     incremental: bool,
     single_page: str | None = None,
-    verbose: bool = False,
 ) -> tuple[list[dict], list[dict], dict, dict]:
     """Process all markdown files and return page data and statistics."""
     public_pages = []
@@ -278,7 +276,7 @@ def process_markdown_files(
     stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
 
     for md_file, page_path, base_url, meta, content in iter_public_md_files(
-        vault_path, config, single_page, verbose
+        vault_path, config, single_page
     ):
         page, was_rebuilt = process_single_md_file(
             md_file,
@@ -292,7 +290,6 @@ def process_markdown_files(
             build_cache,
             force_rebuild,
             incremental,
-            verbose,
         )
 
         new_build_cache[str(md_file)] = md_file.stat().st_mtime
@@ -315,9 +312,10 @@ def render_home_page(
     build_dir: Path,
     env: Environment,
     config: Config,
-    verbose: bool = False,
 ) -> None:
     """Re-render the home page with the recent pages list."""
+    from .logging import debug
+
     home_page_name = config.build.home_page
     home_page = next((p for p in public_pages if p["path"] == home_page_name), None)
     if not home_page:
@@ -325,8 +323,7 @@ def render_home_page(
 
     wiki_base_url = config.base_urls["wiki"]
 
-    if verbose:
-        print(f"  Re-rendering {home_page_name} page with recent pages...")
+    debug(f"  Re-rendering {home_page_name} page with recent pages...")
 
     if not home_page.get("html"):
         home_page["html"] = render_markdown(home_page["body"], wiki_base_url)
@@ -407,7 +404,7 @@ def generate_site_files(
 
 
 def _setup_build_environment(
-    config: Config, force_rebuild: bool, incremental: bool, verbose: bool
+    config: Config, force_rebuild: bool, incremental: bool
 ) -> tuple[Path, Path, dict, Environment, bool]:
     """Setup build directories, load cache, and create Jinja environment.
 
@@ -416,6 +413,7 @@ def _setup_build_environment(
         Note: force_rebuild may be updated if config/templates changed
     """
     from .cache import check_global_deps_changed
+    from .logging import debug
 
     vault_path = config.vault_path
     build_dir = config.get_build_dir()
@@ -428,22 +426,24 @@ def _setup_build_environment(
         build_cache = load_build_cache(cache_file)
 
         # Check if config or templates changed - if so, force rebuild
-        if check_global_deps_changed(build_cache, config.config_path, vault_path):
-            if verbose:
-                print("Config or templates changed, forcing full rebuild...")
+        if (
+            vault_path
+            and config.config_path
+            and check_global_deps_changed(build_cache, config.config_path, vault_path)
+        ):
+            debug("Config or templates changed, forcing full rebuild...")
             force_rebuild = True
             build_cache = {}
 
     # Setup build directories
     if force_rebuild and build_dir.exists():
-        if verbose:
-            print("Force rebuild: Cleaning build directory...")
+        debug("Force rebuild: Cleaning build directory...")
         shutil.rmtree(build_dir)
 
     build_dir.mkdir(parents=True, exist_ok=True)
 
     # Setup Jinja2 environment with template loader
-    env = Environment(loader=get_template_loader(vault_path))
+    env = Environment(loader=get_template_loader(vault_path))  # type: ignore[arg-type]
 
     return build_dir, cache_file, build_cache, env, force_rebuild
 
@@ -455,28 +455,30 @@ def _print_build_summary(
     build_dir: Path,
     incremental: bool,
     force_rebuild: bool,
-    verbose: bool,
 ) -> None:
     """Print build summary."""
-    if verbose:
-        print("\nBuild complete!")
-        if incremental and not force_rebuild:
-            print(f"  - {stats['rebuilt_count']} pages rebuilt")
-            print(f"  - {stats['cached_count']} pages cached (unchanged)")
-            print(f"  - {stats['skipped_count']} private pages skipped")
-        else:
-            print(f"  - {len(public_pages)} public pages generated")
-            print(f"  - {stats['skipped_count']} private pages skipped")
-        print(f"  - {len(published_pages)} published pages (visible in listings)")
-        print(f"  - Output directory: {build_dir.absolute()}")
+    from .logging import debug, info
+
+    # Verbose output goes to debug level
+    debug("\nBuild complete!")
+    if incremental and not force_rebuild:
+        debug(f"  - {stats['rebuilt_count']} pages rebuilt")
+        debug(f"  - {stats['cached_count']} pages cached (unchanged)")
+        debug(f"  - {stats['skipped_count']} private pages skipped")
     else:
-        if incremental and not force_rebuild:
-            summary = f"Done: {stats['rebuilt_count']} rebuilt, {stats['cached_count']} cached, {len(published_pages)} published"
-        else:
-            summary = (
-                f"Done: {len(public_pages)} public, {len(published_pages)} published"
-            )
-        print(summary)
+        debug(f"  - {len(public_pages)} public pages generated")
+        debug(f"  - {stats['skipped_count']} private pages skipped")
+    debug(f"  - {len(published_pages)} published pages (visible in listings)")
+    debug(f"  - Output directory: {build_dir.absolute()}")
+
+    # Concise summary always shown
+    if incremental and not force_rebuild:
+        rebuilt = stats["rebuilt_count"]
+        cached = stats["cached_count"]
+        summary = f"Done: {rebuilt} rebuilt, {cached} cached, {len(published_pages)} published"
+    else:
+        summary = f"Done: {len(public_pages)} public, {len(published_pages)} published"
+    info(summary)
 
 
 def build(
@@ -484,7 +486,6 @@ def build(
     force_rebuild: bool = False,
     incremental: bool | None = None,
     single_page: str | None = None,
-    verbose: bool = False,
 ) -> int:
     """Build static site from markdown pages.
 
@@ -493,34 +494,34 @@ def build(
         force_rebuild: Force rebuild all pages regardless of modification time
         incremental: Enable incremental builds (default from config)
         single_page: Build only the specified page
-        verbose: Enable verbose output
 
     Returns:
         Number of public pages built
     """
+    from .logging import debug, error, info
+
     if incremental is None:
         incremental = config.build.incremental
 
     vault_path = config.vault_path
     if not vault_path:
-        print("Error: No vault path configured")
+        error("No vault path configured")
         return 0
 
     if not vault_path.exists():
-        print(f"Error: Vault directory '{vault_path}' does not exist")
+        error(f"Vault directory '{vault_path}' does not exist")
         return 0
 
     # Preprocess Quarto files (.qmd -> .md)
     if config.advanced.quarto_enabled:
         from .quarto import preprocess_quarto
 
-        if verbose:
-            print("Preprocessing Quarto files...")
-        preprocess_quarto(config, force=force_rebuild, verbose=verbose)
+        debug("Preprocessing Quarto files...")
+        preprocess_quarto(config, force=force_rebuild)
 
     # Setup build environment (force_rebuild may be updated if config/templates changed)
     build_dir, cache_file, build_cache, env, force_rebuild = _setup_build_environment(
-        config, force_rebuild, incremental, verbose
+        config, force_rebuild, incremental
     )
 
     # Copy assets
@@ -528,12 +529,10 @@ def build(
     copy_user_assets(vault_path, build_dir, force_rebuild)
 
     # Print build status
-    if not verbose:
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        print(f"[{timestamp}] Building...")
-    else:
-        mode_text = "Force rebuilding" if force_rebuild else "Building"
-        print(f"{mode_text} static site...")
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    info(f"[{timestamp}] Building...")
+    mode_text = "Force rebuilding" if force_rebuild else "Building"
+    debug(f"{mode_text} static site...")
 
     # Process markdown files
     public_pages, published_pages, new_build_cache, stats = process_markdown_files(
@@ -545,12 +544,11 @@ def build(
         force_rebuild,
         incremental,
         single_page,
-        verbose,
     )
 
     # Re-render Home page with recent pages
     if not single_page:
-        render_home_page(public_pages, published_pages, build_dir, env, config, verbose)
+        render_home_page(public_pages, published_pages, build_dir, env, config)
 
     # Generate site files
     generate_site_files(build_dir, env, config, published_pages, public_pages)
@@ -559,19 +557,17 @@ def build(
     if config.feed.enabled and not single_page:
         from .feed import generate_feed
 
-        if verbose:
-            print("Generating Atom feed...")
+        debug("Generating Atom feed...")
         generate_feed(published_pages, config, env, build_dir)
 
     # Post-process HTML to sanitize private links
     from .postprocess import postprocess_links
 
-    if verbose:
-        print("Post-processing HTML files...")
-    postprocess_links(config, public_pages, verbose=verbose, single_page=single_page)
+    debug("Post-processing HTML files...")
+    postprocess_links(config, public_pages, single_page=single_page)
 
     # Save build cache (including global deps like config and templates)
-    if incremental:
+    if incremental and config.config_path:
         from .cache import update_global_deps_cache
 
         update_global_deps_cache(new_build_cache, config.config_path, vault_path)
@@ -586,7 +582,6 @@ def build(
         build_dir,
         incremental,
         force_rebuild,
-        verbose,
     )
 
     return len(public_pages)

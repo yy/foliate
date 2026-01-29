@@ -78,16 +78,6 @@ class TestPreprocessQuarto:
 
         assert result == {}
 
-    def test_verbose_flag_accepted(self):
-        """Should accept verbose flag without error."""
-        config = Config()
-        config.advanced = AdvancedConfig(quarto_enabled=False)
-
-        # Should not raise even with verbose=True
-        result = preprocess_quarto(config, verbose=True)
-
-        assert result == {}
-
     def test_single_file_with_disabled_quarto(self):
         """Should return empty when quarto disabled even with single_file."""
         with tempfile.TemporaryDirectory() as tmpdir:

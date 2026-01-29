@@ -1,6 +1,5 @@
 """Configuration loading and management for foliate."""
 
-import sys
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -65,19 +64,21 @@ def _warn_unknown_keys(
         section: Section name for error messages
         config_path: Path to config file for error messages
     """
+    from .logging import warning
+
     unknown_keys = set(data.keys()) - valid_keys
     if not unknown_keys:
         return
 
     for key in sorted(unknown_keys):
         location = f" in {config_path}" if config_path else ""
-        msg = f"Warning: Unknown config key '{key}' in [{section}]{location}"
+        msg = f"Unknown config key '{key}' in [{section}]{location}"
 
         similar = _find_similar(key, valid_keys)
         if similar:
             msg += f". Did you mean '{similar}'?"
 
-        print(msg, file=sys.stderr)
+        warning(msg)
 
 
 def _load_dataclass(

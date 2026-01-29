@@ -125,6 +125,7 @@ def deploy_github_pages(
     dry_run: bool = False,
     message: str | None = None,
     build_first: bool = False,
+    verbose: bool = False,
 ) -> bool:
     """Deploy build to GitHub Pages repository.
 
@@ -133,6 +134,7 @@ def deploy_github_pages(
         dry_run: If True, show what would be done without executing
         message: Custom commit message (default: auto-generated)
         build_first: If True, run build before deploying
+        verbose: Enable verbose output
 
     Returns:
         True if deployment succeeded, False otherwise
@@ -140,9 +142,13 @@ def deploy_github_pages(
     # Run build first if requested
     if build_first:
         from .build import build as do_build
+        from .logging import setup_logging
+
+        # Initialize logging for the build
+        setup_logging(verbose=verbose)
 
         click.echo("Building site first...")
-        result = do_build(config=config, force_rebuild=False, verbose=False)
+        result = do_build(config=config, force_rebuild=False)
         if result == 0:
             click.echo("Error: No public pages found to build", err=True)
             return False

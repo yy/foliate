@@ -79,42 +79,49 @@ class FoliateEventHandler(FileSystemEventHandler):
         needs_full_rebuild = False
         qmd_files = []
 
-        for file_path in changes:
-            file_path = Path(file_path)
-            if file_path.suffix in {".html", ".css", ".toml"}:
+        for changed_path in changes:
+            path = Path(changed_path)
+            if path.suffix in {".html", ".css", ".toml"}:
                 needs_full_rebuild = True
-            elif file_path.suffix == ".qmd":
-                qmd_files.append(file_path)
+            elif path.suffix == ".qmd":
+                qmd_files.append(path)
 
         # Preprocess any changed .qmd files before rebuild
         if qmd_files and self.config.advanced.quarto_enabled:
+            from .logging import info
             from .quarto import preprocess_quarto
 
             for qmd_file in qmd_files:
-                print(f"  Preprocessing: {qmd_file.name}")
+                info(f"  Preprocessing: {qmd_file.name}")
                 preprocess_quarto(self.config, single_file=qmd_file)
 
         self.rebuild_callback(force=needs_full_rebuild)
         self.last_rebuild_time = time.time()
 
 
-def watch(config: Config, port: int = 8000) -> None:
+def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     """Start watch mode with auto-rebuild and local server.
 
     Args:
         config: Configuration object
         port: Port for local HTTP server
+        verbose: Enable verbose output
     """
+    from .logging import error, info, setup_logging
+
+    # Initialize logging for watch mode
+    setup_logging(verbose=verbose)
+
     vault_path = config.vault_path
     if not vault_path:
-        print("Error: No vault path configured")
+        error("No vault path configured")
         return
 
-    print("Watch mode: Building initial site...")
-    print("=" * 60)
+    info("Watch mode: Building initial site...")
+    info("=" * 60)
 
     # Initial build
-    do_build(config=config, force_rebuild=False, verbose=False)
+    do_build(config=config, force_rebuild=False)
 
     # Start HTTP server in background
     from .resources import start_dev_server
@@ -122,18 +129,18 @@ def watch(config: Config, port: int = 8000) -> None:
     build_dir = config.get_build_dir()
     server_process = start_dev_server(build_dir, port, background=True)
 
-    print("=" * 60)
-    print(f"Server started: http://localhost:{port}")
-    print("Watching for changes... (Press Ctrl+C to stop)")
-    print("=" * 60)
+    info("=" * 60)
+    info(f"Server started: http://localhost:{port}")
+    info("Watching for changes... (Press Ctrl+C to stop)")
+    info("=" * 60)
 
     def rebuild_callback(force: bool = False):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        print(f"\n[{timestamp}] Rebuilding...")
+        info(f"\n[{timestamp}] Rebuilding...")
         start_time = time.time()
-        do_build(config=config, force_rebuild=force, verbose=False)
+        do_build(config=config, force_rebuild=force)
         elapsed = time.time() - start_time
-        print(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
+        info(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
 
     # Setup watchdog
     handler = FoliateEventHandler(config, rebuild_callback)
@@ -157,10 +164,11 @@ def watch(config: Config, port: int = 8000) -> None:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nStopping watch mode...")
+        info("\nStopping watch mode...")
         observer.stop()
-        server_process.terminate()
-        server_process.wait()
-        print("Watch mode stopped.")
+        if server_process:
+            server_process.terminate()
+            server_process.wait()
+        info("Watch mode stopped.")
 
     observer.join()
