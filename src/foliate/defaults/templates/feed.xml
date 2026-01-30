@@ -32,7 +32,7 @@
   <entry>
     <title>Recently Updated Pages</title>
     <link href="{{ wiki_url }}" rel="alternate" type="text/html"/>
-    <id>{{ config.site.url }}/feed/updates</id>
+    <id>{{ config.site.url }}/feed/updates/{{ updates_entry.updated[:10] }}</id>
     <published>{{ updates_entry.updated }}</published>
     <updated>{{ updates_entry.updated }}</updated>
     <content type="html"><![CDATA[{{ updates_entry.content }}]]></content>

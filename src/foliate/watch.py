@@ -28,7 +28,7 @@ class FoliateEventHandler(FileSystemEventHandler):
         self.debounce_seconds = debounce_seconds
         self.pending_changes: list[str] = []
         self.rebuild_lock = threading.Lock()
-        self.last_rebuild_time = 0.0
+        self._debounce_timer: threading.Timer | None = None
 
         # Relevant file extensions
         self.relevant_extensions = {".md", ".qmd", ".html", ".css", ".toml"} | {
@@ -41,8 +41,12 @@ class FoliateEventHandler(FileSystemEventHandler):
 
         src_path = event.src_path
 
-        # Ignore hidden files, git, and build directory
-        if "/.git/" in src_path or "/.foliate/build/" in src_path:
+        # Ignore hidden files, git, build directory, and cache directory
+        if (
+            "/.git/" in src_path
+            or "/.foliate/build/" in src_path
+            or "/.foliate/cache/" in src_path
+        ):
             return
 
         # Check for ignored folders from config
@@ -59,13 +63,15 @@ class FoliateEventHandler(FileSystemEventHandler):
             if src_path not in self.pending_changes:
                 self.pending_changes.append(src_path)
 
-        # Schedule processing after debounce period
-        def delayed_process():
-            time.sleep(self.debounce_seconds)
-            if time.time() - self.last_rebuild_time >= self.debounce_seconds:
-                self.process_changes()
+            # Cancel existing timer and start a new one (debounce reset)
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
 
-        threading.Thread(target=delayed_process, daemon=True).start()
+            self._debounce_timer = threading.Timer(
+                self.debounce_seconds, self.process_changes
+            )
+            self._debounce_timer.daemon = True
+            self._debounce_timer.start()
 
     def process_changes(self):
         """Process pending file changes."""
@@ -96,7 +102,6 @@ class FoliateEventHandler(FileSystemEventHandler):
                 preprocess_quarto(self.config, single_file=qmd_file)
 
         self.rebuild_callback(force=needs_full_rebuild)
-        self.last_rebuild_time = time.time()
 
 
 def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:

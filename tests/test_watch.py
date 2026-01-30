@@ -279,15 +279,6 @@ class TestFoliateEventHandler:
         # Single rebuild call for all files
         callback.assert_called_once()
 
-    def test_updates_last_rebuild_time(self, handler):
-        """Processing changes should update last_rebuild_time."""
-        handler.pending_changes = ["/vault/notes/page.md"]
-        initial_time = handler.last_rebuild_time
-
-        handler.process_changes()
-
-        assert handler.last_rebuild_time > initial_time
-
     # --- Thread Safety Tests ---
 
     def test_concurrent_events_thread_safe(self, config):
