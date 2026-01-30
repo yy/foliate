@@ -452,8 +452,8 @@ class TestStaleWarning:
     """Tests for stale build warning in deploy."""
 
     @patch("foliate.deploy.subprocess.run")
-    @patch("foliate.deploy.click.echo")
-    def test_warns_when_build_is_stale(self, mock_echo, mock_run):
+    @patch("foliate.logging.warning")
+    def test_warns_when_build_is_stale(self, mock_warning, mock_run):
         """Should warn when build directory is stale."""
         with tempfile.TemporaryDirectory() as tmpdir:
             vault = Path(tmpdir)
@@ -482,14 +482,14 @@ class TestStaleWarning:
             # Check that warning was printed
             warning_calls = [
                 call
-                for call in mock_echo.call_args_list
+                for call in mock_warning.call_args_list
                 if "stale" in str(call).lower()
             ]
             assert len(warning_calls) > 0
 
     @patch("foliate.deploy.subprocess.run")
-    @patch("foliate.deploy.click.echo")
-    def test_no_warning_when_build_is_fresh(self, mock_echo, mock_run):
+    @patch("foliate.logging.warning")
+    def test_no_warning_when_build_is_fresh(self, mock_warning, mock_run):
         """Should not warn when build is up-to-date."""
         with tempfile.TemporaryDirectory() as tmpdir:
             vault = Path(tmpdir)
@@ -518,14 +518,14 @@ class TestStaleWarning:
             # Check that no stale warning was printed
             warning_calls = [
                 call
-                for call in mock_echo.call_args_list
+                for call in mock_warning.call_args_list
                 if "stale" in str(call).lower()
             ]
             assert len(warning_calls) == 0
 
     @patch("foliate.deploy.subprocess.run")
-    @patch("foliate.deploy.click.echo")
-    def test_no_warning_when_build_first_is_set(self, mock_echo, mock_run):
+    @patch("foliate.logging.warning")
+    def test_no_warning_when_build_first_is_set(self, mock_warning, mock_run):
         """Should not warn about stale build when --build flag is used."""
         with tempfile.TemporaryDirectory() as tmpdir:
             vault = Path(tmpdir)
@@ -556,7 +556,7 @@ class TestStaleWarning:
             # Check that no stale warning was printed (build_first rebuilds)
             warning_calls = [
                 call
-                for call in mock_echo.call_args_list
+                for call in mock_warning.call_args_list
                 if "stale" in str(call).lower()
             ]
             assert len(warning_calls) == 0

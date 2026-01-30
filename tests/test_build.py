@@ -311,3 +311,124 @@ This should not be built.
         assert not (
             vault_path / ".foliate" / "build" / "wiki" / "secret" / "index.html"
         ).exists()
+
+    def test_wiki_root_redirect(self, tmp_path):
+        """Wiki root (/wiki/) redirects to home page."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        # Create .foliate config
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+home_page = "Home"
+"""
+        )
+
+        # Create home page
+        home_page = vault_path / "Home.md"
+        home_page.write_text(
+            """---
+title: Home
+public: true
+---
+
+Welcome home.
+"""
+        )
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        # Check wiki root redirect exists
+        wiki_index = vault_path / ".foliate" / "build" / "wiki" / "index.html"
+        assert wiki_index.exists()
+
+        # Should redirect to /wiki/Home/
+        content = wiki_index.read_text()
+        assert "/wiki/Home/" in content
+
+    def test_wiki_root_redirect_custom_home_page(self, tmp_path):
+        """Wiki root redirect uses configured home page."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        # Create .foliate config with custom home page
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+home_page = "Index"
+"""
+        )
+
+        # Create the custom home page
+        page = vault_path / "Index.md"
+        page.write_text(
+            """---
+title: Index
+public: true
+---
+
+This is the index.
+"""
+        )
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        wiki_index = vault_path / ".foliate" / "build" / "wiki" / "index.html"
+        assert wiki_index.exists()
+
+        content = wiki_index.read_text()
+        assert "/wiki/Index/" in content
+
+    def test_no_wiki_root_redirect_when_empty_prefix(self, tmp_path):
+        """No wiki root redirect when wiki_prefix is empty."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        # Create .foliate config with empty wiki_prefix
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+wiki_prefix = ""
+home_redirect = "Home"
+"""
+        )
+
+        # Create a page
+        page = vault_path / "Home.md"
+        page.write_text(
+            """---
+title: Home
+public: true
+---
+
+Home page.
+"""
+        )
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        # With empty wiki_prefix, there's no wiki directory to redirect
+        wiki_dir = vault_path / ".foliate" / "build" / "wiki"
+        assert not wiki_dir.exists()

@@ -132,6 +132,18 @@ class TestParseFrontmatterDate:
         assert result.minute == 30
         assert result.tzinfo == timezone.utc
 
+    def test_parse_datetime_with_z_suffix(self):
+        """Parses datetime with Z suffix (UTC indicator)."""
+        result = parse_frontmatter_date("2024-03-15T10:30:00Z")
+
+        assert result.year == 2024
+        assert result.month == 3
+        assert result.day == 15
+        assert result.hour == 10
+        assert result.minute == 30
+        assert result.second == 0
+        assert result.tzinfo == timezone.utc
+
     def test_parse_date_object(self):
         """Handles date object input."""
         from datetime import date
@@ -360,6 +372,66 @@ class TestClassifyPages:
 
         assert [p["path"] for p in new_pages] == ["Page3", "Page2", "Page1"]
 
+    def test_pages_with_same_date_sorted_by_path(self):
+        """Pages with the same date are sorted deterministically by path."""
+        now = datetime.now(timezone.utc)
+        same_date = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        # Create pages with same date but different paths
+        # Input order intentionally scrambled
+        pages = [
+            {
+                "path": "Zebra",
+                "meta": {"published": same_date},
+                "file_mtime": now.timestamp(),
+            },
+            {
+                "path": "Alpha",
+                "meta": {"published": same_date},
+                "file_mtime": now.timestamp(),
+            },
+            {
+                "path": "Middle",
+                "meta": {"published": same_date},
+                "file_mtime": now.timestamp(),
+            },
+        ]
+
+        new_pages, _ = classify_pages(pages, window_days=30, now=now)
+
+        # Should be sorted alphabetically by path as secondary sort
+        assert [p["path"] for p in new_pages] == ["Alpha", "Middle", "Zebra"]
+
+    def test_updated_pages_with_same_date_sorted_by_path(self):
+        """Updated pages with the same modification date are sorted by path."""
+        now = datetime.now(timezone.utc)
+        old_date = (now - timedelta(days=60)).strftime("%Y-%m-%d")
+        same_mtime = (now - timedelta(days=5)).timestamp()
+
+        # Create pages with same modification time but different paths
+        pages = [
+            {
+                "path": "Zebra",
+                "meta": {"published": old_date},
+                "file_mtime": same_mtime,
+            },
+            {
+                "path": "Alpha",
+                "meta": {"published": old_date},
+                "file_mtime": same_mtime,
+            },
+            {
+                "path": "Middle",
+                "meta": {"published": old_date},
+                "file_mtime": same_mtime,
+            },
+        ]
+
+        _, updated_pages = classify_pages(pages, window_days=30, now=now)
+
+        # Should be sorted alphabetically by path as secondary sort
+        assert [p["path"] for p in updated_pages] == ["Alpha", "Middle", "Zebra"]
+
 
 class TestExtractSummary:
     """Tests for extract_summary function."""
@@ -430,6 +502,24 @@ class TestGenerateUpdatesDigest:
         result = generate_updates_digest([], "https://example.com")
 
         assert result == ""
+
+    def test_uses_iso_date_format(self):
+        """Uses ISO format (YYYY-MM-DD) for language-neutral dates."""
+        pages = [
+            {
+                "path": "TestPage",
+                "title": "Test Page",
+                "url": "/wiki/TestPage/",
+                "meta": {"modified": "2024-03-15"},
+            },
+        ]
+
+        result = generate_updates_digest(pages, "https://example.com")
+
+        # Should contain ISO date format, not English month names
+        assert "2024-03-15" in result
+        # Should NOT contain English month names
+        assert "March" not in result
 
 
 class TestCreateFeedItems:
@@ -839,3 +929,68 @@ window = 30
 
         # Stale feed should be removed
         assert not stale_feed.exists()
+
+    def test_empty_wiki_prefix_includes_all_pages(self, tmp_path):
+        """When wiki_prefix is empty, all pages are included in feed."""
+        from jinja2 import Environment
+
+        from foliate.config import Config
+        from foliate.feed import generate_feed
+        from foliate.templates import get_template_loader
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://example.com"
+
+[build]
+wiki_prefix = ""
+
+[feed]
+enabled = true
+"""
+        )
+
+        config = Config.load(config_path)
+        build_dir = tmp_path / ".foliate" / "build"
+        build_dir.mkdir(parents=True)
+
+        env = Environment(loader=get_template_loader(tmp_path))
+
+        now = datetime.now(timezone.utc)
+        recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        # Mix of pages that would normally be homepage vs wiki content
+        # With empty prefix, all should be included
+        pages = [
+            {
+                "path": "about",
+                "title": "About Page",
+                "url": "/about/",  # Would be homepage content with prefix
+                "html": "<p>About content</p>",
+                "meta": {"published": recent},
+                "file_mtime": now.timestamp(),
+            },
+            {
+                "path": "notes/MyNote",
+                "title": "My Note",
+                "url": "/notes/MyNote/",  # Regular content at root
+                "html": "<p>Note content</p>",
+                "meta": {"published": recent},
+                "file_mtime": now.timestamp(),
+            },
+        ]
+
+        generate_feed(pages, config, env, build_dir)
+
+        feed_file = build_dir / "feed.xml"
+        assert feed_file.exists()
+
+        content = feed_file.read_text()
+        # Both pages should be included when wiki_prefix is empty
+        assert "About Page" in content
+        assert "My Note" in content

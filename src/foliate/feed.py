@@ -185,9 +185,13 @@ def classify_pages(
             updated_pages.append(page)
         # else: page is outside window entirely, skip
 
-    # Sort by date descending
-    new_pages.sort(key=lambda p: get_published_date(p) or now, reverse=True)
-    updated_pages.sort(key=lambda p: get_modified_date(p) or now, reverse=True)
+    # Sort by date descending, then by path ascending for deterministic order
+    new_pages.sort(
+        key=lambda p: (-(get_published_date(p) or now).timestamp(), p["path"])
+    )
+    updated_pages.sort(
+        key=lambda p: (-(get_modified_date(p) or now).timestamp(), p["path"])
+    )
 
     return new_pages, updated_pages
 
@@ -243,7 +247,7 @@ def generate_updates_digest(pages: list[dict], site_url: str) -> str:
         title = escape(page.get("title", page["path"]))
         url = escape(f"{site_url}{page['url']}", quote=True)
         modified = get_modified_date(page)
-        date_str = modified.strftime("%B %d, %Y") if modified else ""
+        date_str = modified.strftime("%Y-%m-%d") if modified else ""
 
         lines.append(f'  <li><a href="{url}">{title}</a> - {date_str}</li>')
 
@@ -386,7 +390,13 @@ def generate_feed(
     ]
 
     # Render feed template
-    template = templates.get_template("feed.xml")
+    try:
+        template = templates.get_template("feed.xml")
+    except Exception as e:
+        from .logging import error
+
+        error(f"Failed to load feed template: {e}")
+        return
     wiki_url = f"{site_url}/{wiki_prefix}/" if wiki_prefix else f"{site_url}/"
 
     feed_xml = template.render(

@@ -4,8 +4,6 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import click
-
 from .config import Config
 
 
@@ -139,20 +137,21 @@ def deploy_github_pages(
     Returns:
         True if deployment succeeded, False otherwise
     """
+    from .logging import error, info, setup_logging, warning
+
+    # Initialize logging
+    setup_logging(verbose=verbose)
+
     # Run build first if requested
     if build_first:
         from .build import build as do_build
-        from .logging import setup_logging
 
-        # Initialize logging for the build
-        setup_logging(verbose=verbose)
-
-        click.echo("Building site first...")
+        info("Building site first...")
         result = do_build(config=config, force_rebuild=False)
         if result == 0:
-            click.echo("Error: No public pages found to build", err=True)
+            error("No public pages to deploy")
             return False
-        click.echo(f"Built {result} pages\n")
+        info(f"Built {result} pages\n")
 
     build_dir = config.get_build_dir()
     target = Path(config.deploy.target)
@@ -163,37 +162,35 @@ def deploy_github_pages(
 
     # Validate build directory exists
     if not build_dir.exists():
-        click.echo(f"Error: Build directory not found: {build_dir}", err=True)
-        click.echo("Run 'foliate build' first", err=True)
+        error(f"Build directory not found: {build_dir}")
+        error("Run 'foliate build' first")
         return False
 
     # Warn if build is stale (skip if we just built)
     if not build_first:
         stale = is_build_stale(config)
         if stale:
-            click.echo(
-                "Warning: Build may be stale. Source files have been modified "
-                "since the last build.",
-                err=True,
+            warning(
+                "Build may be stale. Source files have been modified "
+                "since the last build."
             )
-            click.echo(
-                "Consider running 'foliate build' or 'foliate deploy --build' first.",
-                err=True,
+            warning(
+                "Consider running 'foliate build' or 'foliate deploy --build' first."
             )
 
     # Validate target exists and is a git repo
     if not target.exists():
-        click.echo(f"Error: Deploy target not found: {target}", err=True)
+        error(f"Deploy target not found: {target}")
         return False
 
     git_dir = target / ".git"
     if not git_dir.exists():
-        click.echo(f"Error: Deploy target is not a git repository: {target}", err=True)
+        error(f"Deploy target is not a git repository: {target}")
         return False
 
     # Pull latest from remote to avoid conflicts when deploying from multiple machines
     if not dry_run:
-        click.echo("Pulling latest from remote...")
+        info("Pulling latest from remote...")
         pull_result = subprocess.run(
             ["git", "pull", "--rebase", "--autostash"],
             cwd=target,
@@ -203,7 +200,7 @@ def deploy_github_pages(
         if pull_result.returncode != 0:
             # Pull failed - might be a new repo or no remote, which is fine
             if "no tracking information" not in pull_result.stderr.lower():
-                click.echo(f"Warning: git pull failed: {pull_result.stderr.strip()}")
+                warning(f"git pull failed: {pull_result.stderr.strip()}")
 
     # Build rsync command
     rsync_args = [
@@ -223,14 +220,14 @@ def deploy_github_pages(
 
     if dry_run:
         rsync_args.insert(1, "--dry-run")
-        click.echo("Dry run - showing what would be done:\n")
+        info("Dry run - showing what would be done:\n")
 
-    click.echo(f"Syncing {build_dir} -> {target}")
+    info(f"Syncing {build_dir} -> {target}")
 
     # Run rsync (always show output so user sees what's happening)
-    result = subprocess.run(rsync_args)
-    if result.returncode != 0:
-        click.echo("Error: rsync failed", err=True)
+    rsync_result = subprocess.run(rsync_args)
+    if rsync_result.returncode != 0:
+        error("rsync failed")
         return False
 
     # Check for changes in target repo
@@ -251,7 +248,7 @@ def deploy_github_pages(
     has_changes = diff_result.returncode != 0 or bool(status_result.stdout.strip())
 
     if not has_changes:
-        click.echo("No changes to deploy")
+        info("No changes to deploy")
         return True
 
     # Generate commit message
@@ -260,12 +257,12 @@ def deploy_github_pages(
         message = f"Deploy: {timestamp}"
 
     if dry_run:
-        click.echo(f"\nWould commit with message: {message}")
-        click.echo("Would push to remote")
+        info(f"\nWould commit with message: {message}")
+        info("Would push to remote")
         return True
 
     # Git add, commit, push
-    click.echo(f"Committing: {message}")
+    info(f"Committing: {message}")
 
     add_result = subprocess.run(
         ["git", "add", "."],
@@ -273,7 +270,7 @@ def deploy_github_pages(
         capture_output=True,
     )
     if add_result.returncode != 0:
-        click.echo("Error: git add failed", err=True)
+        error("git add failed")
         return False
 
     commit_result = subprocess.run(
@@ -283,11 +280,11 @@ def deploy_github_pages(
         text=True,
     )
     if commit_result.returncode != 0:
-        click.echo("Error: git commit failed", err=True)
-        click.echo(commit_result.stderr, err=True)
+        error("git commit failed")
+        error(commit_result.stderr)
         return False
 
-    click.echo("Pushing to remote...")
+    info("Pushing to remote...")
 
     push_result = subprocess.run(
         ["git", "push"],
@@ -296,9 +293,9 @@ def deploy_github_pages(
         text=True,
     )
     if push_result.returncode != 0:
-        click.echo("Error: git push failed", err=True)
-        click.echo(push_result.stderr, err=True)
+        error("git push failed")
+        error(push_result.stderr)
         return False
 
-    click.echo("Deploy complete!")
+    info("Deploy complete!")
     return True

@@ -381,7 +381,7 @@ def generate_site_files(
     published_pages: list[dict],
     public_pages: list[dict],
 ) -> None:
-    """Generate site-wide files: home redirect, search.json, sitemap."""
+    """Generate site-wide files: home redirect, wiki redirect, search.json, sitemap."""
     wiki_base_url = config.base_urls["wiki"]
     wiki_dir_name = config.build.wiki_prefix.strip("/")
 
@@ -393,6 +393,17 @@ def generate_site_files(
         redirect_title=config.build.home_redirect.title(),
     )
     (build_dir / "index.html").write_text(home_html)
+
+    # Generate wiki root redirect (only if wiki_prefix is set)
+    if wiki_dir_name:
+        wiki_home_url = f"/{wiki_dir_name}/{config.build.home_page}/"
+        wiki_redirect_html = redirect_template.render(
+            redirect_url=wiki_home_url,
+            redirect_title=config.build.home_page,
+        )
+        wiki_dir = build_dir / wiki_dir_name
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+        (wiki_dir / "index.html").write_text(wiki_redirect_html)
 
     generate_search_index(build_dir, public_pages, wiki_base_url, wiki_dir_name)
     generate_sitemap(build_dir, public_pages, wiki_base_url)
