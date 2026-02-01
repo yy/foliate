@@ -210,13 +210,24 @@ def fix_homepage_to_wiki_links(html_content: str) -> str:
     Links starting with / that aren't wiki/, assets/, or external URLs
     get prefixed with /wiki to point to the wiki section.
     """
-    skip_prefixes = ("wiki/", "assets/", "http://", "https://", "#", "mailto:")
+    skip_prefixes = (
+        "wiki/",
+        "assets/",
+        "static/",
+        "http://",
+        "https://",
+        "#",
+        "mailto:",
+    )
 
     def should_be_wiki_link(path: str) -> bool:
         clean_path = path.strip("/")
         if not clean_path:
             return False
         if clean_path.startswith(skip_prefixes):
+            return False
+        # Skip paths with file extensions (e.g., feed.xml, robots.txt)
+        if "." in clean_path.split("/")[-1]:
             return False
         return True
 
