@@ -154,6 +154,33 @@ rsync -avz --delete .foliate/build/ user@server:/var/www/mysite/
 cp -r .foliate/build/* /path/to/webserver/
 ```
 
+## Customization
+
+Foliate is designed to be customized via template and CSS overrides.
+
+### Quick Start
+
+```
+my-vault/
+└── .foliate/
+    ├── templates/     # Override layout.html, page.html
+    └── static/        # Override main.css, add custom assets
+```
+
+Files in these directories take precedence over Foliate's defaults.
+
+### Documentation
+
+See [docs/customization.md](docs/customization.md) for the full guide, including:
+
+- Template variables reference
+- CSS variables for theming
+- Common customization examples:
+  - [Newsletter signup forms](docs/examples/subscription-cta.md)
+  - [Custom footer with social links](docs/examples/custom-footer.md)
+  - [Adding analytics](docs/examples/analytics.md)
+  - [Adding a sidebar](docs/examples/sidebar.md)
+
 ## Quarto Support (Optional)
 
 Foliate can preprocess `.qmd` files (Quarto markdown) to `.md` before building:
