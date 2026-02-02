@@ -393,9 +393,10 @@ def generate_feed(
     try:
         template = templates.get_template("feed.xml")
     except Exception as e:
-        from .logging import error
+        from .logging import warning
 
-        error(f"Failed to load feed template: {e}")
+        warning(f"Failed to load feed template: {e}")
+        warning("Feed generation skipped. Ensure feed.xml template exists.")
         return
     wiki_url = f"{site_url}/{wiki_prefix}/" if wiki_prefix else f"{site_url}/"
 

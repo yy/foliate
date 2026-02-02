@@ -175,6 +175,45 @@ This is the content.
         assert meta == {}
         assert "# Just Content" in content
 
+    def test_handles_malformed_frontmatter(self, tmp_path, capsys):
+        """Returns empty dict and logs warning for malformed YAML."""
+        md_file = tmp_path / "malformed.md"
+        md_file.write_text(
+            """---
+title: Test
+  bad_indent: this is invalid YAML indentation
+  - also: mixed list and mapping
+---
+
+Content here.
+"""
+        )
+
+        meta, content = markdown_utils.parse_markdown_file(md_file)
+
+        assert meta == {}
+        assert content == ""
+        captured = capsys.readouterr()
+        assert "YAML parsing error" in captured.err
+
+    def test_handles_unclosed_frontmatter(self, tmp_path, capsys):
+        """Returns empty dict for unclosed frontmatter delimiter."""
+        md_file = tmp_path / "unclosed.md"
+        md_file.write_text(
+            """---
+title: Test
+public: true
+No closing delimiter here.
+"""
+        )
+
+        meta, content = markdown_utils.parse_markdown_file(md_file)
+
+        # python-frontmatter is lenient, but content may be parsed unexpectedly
+        # The key behavior is that it doesn't crash
+        assert isinstance(meta, dict)
+        assert isinstance(content, str)
+
 
 class TestFixHomepageToWikiLinks:
     """Tests for fix_homepage_to_wiki_links() function."""

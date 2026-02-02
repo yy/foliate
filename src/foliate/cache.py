@@ -1,6 +1,6 @@
 """Build cache management for foliate."""
 
-import pickle
+import json
 from pathlib import Path
 
 BUILD_CACHE_FILE = ".build_cache"
@@ -21,9 +21,9 @@ def load_build_cache(cache_file: Path) -> dict:
     """
     if cache_file.exists():
         try:
-            with open(cache_file, "rb") as f:
-                return pickle.load(f)
-        except (pickle.PickleError, OSError, EOFError):
+            with open(cache_file, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
             return {}
     return {}
 
@@ -36,8 +36,8 @@ def save_build_cache(cache_file: Path, cache_data: dict) -> None:
         cache_data: Dictionary mapping file paths to modification times
     """
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(cache_file, "wb") as f:
-        pickle.dump(cache_data, f)
+    with open(cache_file, "w", encoding="utf-8") as f:
+        json.dump(cache_data, f)
 
 
 def needs_rebuild(

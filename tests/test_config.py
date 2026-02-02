@@ -285,3 +285,55 @@ baz = "qux"
 
         assert "foo" in captured.err
         assert "baz" in captured.err
+
+
+class TestConfigErrorPaths:
+    """Tests for error handling in config loading."""
+
+    def test_find_and_load_raises_when_no_config_found(self, tmp_path):
+        """Raises FileNotFoundError when no config file exists."""
+        import pytest
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            Config.find_and_load(tmp_path)
+
+        assert ".foliate/config.toml" in str(exc_info.value)
+        assert "foliate init" in str(exc_info.value)
+
+    def test_load_raises_on_invalid_toml_syntax(self, tmp_path):
+        """Raises TOMLDecodeError for invalid TOML syntax."""
+        import tomllib
+
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site
+name = "Missing bracket"
+"""
+        )
+
+        with pytest.raises(tomllib.TOMLDecodeError):
+            Config.load(config_path)
+
+    def test_load_raises_on_invalid_toml_value_syntax(self, tmp_path):
+        """Raises TOMLDecodeError for invalid value syntax."""
+        import tomllib
+
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Unclosed string
+"""
+        )
+
+        with pytest.raises(tomllib.TOMLDecodeError):
+            Config.load(config_path)

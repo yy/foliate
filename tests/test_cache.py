@@ -70,7 +70,18 @@ class TestBuildCache:
     def test_load_corrupted_cache(self, tmp_path):
         """Loading corrupted cache returns empty dict."""
         cache_file = tmp_path / ".build_cache"
-        cache_file.write_text("not valid pickle data")
+        cache_file.write_text("not valid json data")
+
+        result = build_cache.load_build_cache(cache_file)
+
+        assert result == {}
+
+    def test_load_legacy_pickle_cache(self, tmp_path):
+        """Loading legacy pickle cache returns empty dict."""
+        import pickle
+
+        cache_file = tmp_path / ".build_cache"
+        cache_file.write_bytes(pickle.dumps({"file1.md": 12345.0}))
 
         result = build_cache.load_build_cache(cache_file)
 

@@ -994,3 +994,63 @@ enabled = true
         # Both pages should be included when wiki_prefix is empty
         assert "About Page" in content
         assert "My Note" in content
+
+    def test_warns_when_template_fails_to_load(self, tmp_path, capsys):
+        """Logs warning when feed template cannot be loaded."""
+        from jinja2 import Environment, FileSystemLoader
+
+        from foliate.config import Config
+        from foliate.feed import generate_feed
+        from foliate.logging import setup_logging
+
+        # Initialize logging to ensure warnings go to stderr
+        setup_logging(verbose=False)
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://example.com"
+
+[feed]
+enabled = true
+"""
+        )
+
+        config = Config.load(config_path)
+        build_dir = tmp_path / ".foliate" / "build"
+        build_dir.mkdir(parents=True)
+
+        # Create a Jinja2 environment with an empty template directory
+        # This will cause template loading to fail
+        empty_templates_dir = tmp_path / "empty_templates"
+        empty_templates_dir.mkdir()
+        env = Environment(loader=FileSystemLoader(str(empty_templates_dir)))
+
+        now = datetime.now(timezone.utc)
+        recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        pages = [
+            {
+                "path": "TestPage",
+                "title": "Test Page",
+                "url": "/wiki/TestPage/",
+                "html": "<p>Content</p>",
+                "meta": {"published": recent},
+                "file_mtime": now.timestamp(),
+            }
+        ]
+
+        generate_feed(pages, config, env, build_dir)
+
+        # Feed file should not exist
+        feed_file = build_dir / "feed.xml"
+        assert not feed_file.exists()
+
+        # Warning messages should be output to stderr
+        captured = capsys.readouterr()
+        assert "Failed to load feed template" in captured.err
+        assert "Feed generation skipped" in captured.err
