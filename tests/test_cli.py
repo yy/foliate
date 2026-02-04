@@ -232,6 +232,32 @@ class TestCleanCommand:
             assert config_file.exists()
 
 
+class TestDoctorCommand:
+    """Tests for the doctor command."""
+
+    def test_fails_without_config(self):
+        """Should fail when no config file exists."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["doctor"])
+
+            assert result.exit_code == 1
+            assert "config.toml" in result.output
+
+    def test_reports_ok_with_config(self):
+        """Should report OK when config exists."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text("")
+
+            result = runner.invoke(main, ["doctor"])
+
+            assert result.exit_code == 0
+            assert "OK" in result.output
+
+
 class TestDeployCommand:
     """Tests for the deploy command."""
 
@@ -420,6 +446,7 @@ class TestMainGroup:
         assert result.exit_code == 0
         assert "init" in result.output
         assert "build" in result.output
+        assert "doctor" in result.output
         assert "clean" in result.output
         assert "deploy" in result.output
         assert "watch" in result.output

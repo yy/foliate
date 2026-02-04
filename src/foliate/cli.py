@@ -170,6 +170,24 @@ def clean():
 
 
 @main.command()
+def doctor():
+    """Check configuration and template availability."""
+    from .doctor import run_doctor
+
+    errors, warnings, ok = run_doctor()
+
+    for message in errors:
+        click.echo(f"Error: {message}", err=True)
+    for message in warnings:
+        click.echo(f"Warning: {message}", err=True)
+    for message in ok:
+        click.echo(f"OK: {message}")
+
+    if errors:
+        raise SystemExit(1)
+
+
+@main.command()
 @click.option(
     "--dry-run", "-n", is_flag=True, help="Show what would be done without executing"
 )
