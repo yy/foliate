@@ -50,20 +50,42 @@ def copy_directory_incremental(
         if target_dir.exists():
             shutil.rmtree(target_dir)
         shutil.copytree(src_dir, target_dir)
-    else:
-        for src_file in src_dir.glob("**/*"):
-            if not src_file.is_file():
+        return
+
+    source_files: set[Path] = set()
+    needs_refresh = False
+
+    for src_file in src_dir.glob("**/*"):
+        if not src_file.is_file():
+            continue
+        if filter_extensions and src_file.suffix.lower() not in filter_extensions:
+            continue
+
+        rel_path = src_file.relative_to(src_dir)
+        source_files.add(rel_path)
+
+        target_file = target_dir / rel_path
+        if (
+            not target_file.exists()
+            or src_file.stat().st_mtime > target_file.stat().st_mtime
+        ):
+            needs_refresh = True
+            break
+
+    if not needs_refresh:
+        for target_file in target_dir.glob("**/*"):
+            if not target_file.is_file():
                 continue
-            if filter_extensions and src_file.suffix.lower() not in filter_extensions:
+            if filter_extensions and target_file.suffix.lower() not in filter_extensions:
                 continue
-            target_file = target_dir / src_file.relative_to(src_dir)
-            if (
-                not target_file.exists()
-                or src_file.stat().st_mtime > target_file.stat().st_mtime
-            ):
-                shutil.rmtree(target_dir)
-                shutil.copytree(src_dir, target_dir)
+            rel_path = target_file.relative_to(target_dir)
+            if rel_path not in source_files:
+                needs_refresh = True
                 break
+
+    if needs_refresh:
+        shutil.rmtree(target_dir)
+        shutil.copytree(src_dir, target_dir)
 
 
 def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> None:
