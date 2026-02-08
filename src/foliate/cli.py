@@ -1,10 +1,10 @@
 """Command-line interface for foliate."""
 
-import shutil
 from pathlib import Path
 
 import click
 
+from .assets import robust_rmtree
 from .config import Config
 from .resources import copy_package_files, read_package_text
 
@@ -156,12 +156,12 @@ def clean():
     cleaned = False
 
     if build_dir.exists():
-        shutil.rmtree(build_dir)
+        robust_rmtree(build_dir)
         click.echo(f"Removed {build_dir}")
         cleaned = True
 
     if cache_dir.exists():
-        shutil.rmtree(cache_dir)
+        robust_rmtree(cache_dir)
         click.echo(f"Removed {cache_dir}")
         cleaned = True
 

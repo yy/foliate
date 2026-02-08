@@ -1,13 +1,12 @@
 """Core build logic for foliate static site generator."""
 
 import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Environment
 
-from .assets import copy_static_assets, copy_user_assets
+from .assets import copy_static_assets, copy_user_assets, robust_rmtree
 from .cache import (
     BUILD_CACHE_FILE,
     load_build_cache,
@@ -449,7 +448,7 @@ def _setup_build_environment(
     # Setup build directories
     if force_rebuild and build_dir.exists():
         debug("Force rebuild: Cleaning build directory...")
-        shutil.rmtree(build_dir)
+        robust_rmtree(build_dir)
 
     build_dir.mkdir(parents=True, exist_ok=True)
 

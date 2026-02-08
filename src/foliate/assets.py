@@ -1,6 +1,7 @@
 """Asset handling for foliate."""
 
 import shutil
+import time
 from pathlib import Path
 
 # Supported asset file extensions
@@ -32,6 +33,19 @@ SUPPORTED_ASSET_EXTENSIONS = {
 }
 
 
+def robust_rmtree(path: Path, retries: int = 3, delay: float = 0.1) -> None:
+    """Remove a directory tree with retry logic for macOS file descriptor races."""
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError:
+            if attempt < retries - 1:
+                time.sleep(delay * (attempt + 1))
+            else:
+                raise
+
+
 def copy_directory_incremental(
     src_dir: Path,
     target_dir: Path,
@@ -48,7 +62,7 @@ def copy_directory_incremental(
     """
     if force_rebuild or not target_dir.exists():
         if target_dir.exists():
-            shutil.rmtree(target_dir)
+            robust_rmtree(target_dir)
         shutil.copytree(src_dir, target_dir)
         return
 
@@ -76,7 +90,10 @@ def copy_directory_incremental(
         for target_file in target_dir.glob("**/*"):
             if not target_file.is_file():
                 continue
-            if filter_extensions and target_file.suffix.lower() not in filter_extensions:
+            if (
+                filter_extensions
+                and target_file.suffix.lower() not in filter_extensions
+            ):
                 continue
             rel_path = target_file.relative_to(target_dir)
             if rel_path not in source_files:
@@ -84,7 +101,7 @@ def copy_directory_incremental(
                 break
 
     if needs_refresh:
-        shutil.rmtree(target_dir)
+        robust_rmtree(target_dir)
         shutil.copytree(src_dir, target_dir)
 
 
