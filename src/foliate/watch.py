@@ -87,9 +87,10 @@ class FoliateEventHandler(FileSystemEventHandler):
 
         for changed_path in changes:
             path = Path(changed_path)
-            if path.suffix in {".html", ".css", ".toml"}:
+            suffix = path.suffix.lower()
+            if suffix in {".html", ".css", ".toml"}:
                 needs_full_rebuild = True
-            elif path.suffix == ".qmd":
+            elif suffix == ".qmd":
                 qmd_files.append(path)
 
         # Preprocess any changed .qmd files before rebuild

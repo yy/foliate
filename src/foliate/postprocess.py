@@ -17,12 +17,19 @@ def extract_wiki_path(href: str, wiki_prefix: str = "wiki") -> str | None:
     if not href:
         return None
 
-    prefix = f"/{wiki_prefix}/"
-    if not href.startswith(prefix):
-        return None
+    if wiki_prefix:
+        prefix = f"/{wiki_prefix}/"
+        if not href.startswith(prefix):
+            return None
 
-    # Remove prefix and trailing '/'
-    path = href[len(prefix) :]
+        # Remove prefix and trailing '/'
+        path = href[len(prefix) :]
+    else:
+        # Root wiki mode: page links are like '/PageName/'.
+        if not href.startswith("/") or href.startswith("//"):
+            return None
+        path = href[1:]
+
     if path.endswith("/"):
         path = path[:-1]
 

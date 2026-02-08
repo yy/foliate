@@ -1,6 +1,7 @@
 """Core build logic for foliate static site generator."""
 
 import json
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -96,6 +97,7 @@ def create_page_object(
         "tags": meta.get("tags", []),
         "date": meta.get("date"),
         "url": page_url,
+        "base_url": base_url,
         "description": description,
         "image": image,
     }
@@ -162,6 +164,7 @@ def iter_public_md_files(
     vault_path: Path,
     config: Config,
     single_page: str | None = None,
+    on_skipped: Callable[[Path, str], None] | None = None,
 ):
     """Iterate over public markdown files in the vault.
 
@@ -196,6 +199,8 @@ def iter_public_md_files(
             if single_page and page_path == single_page:
                 debug(f"  Building single page (overriding privacy): {page_path}")
             else:
+                if on_skipped:
+                    on_skipped(md_file, page_path)
                 continue
 
         yield md_file, page_path, content_base_url, meta, markdown_content
@@ -274,8 +279,11 @@ def process_markdown_files(
     new_build_cache = {}
     stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
 
+    def _track_skipped(_md_file: Path, _page_path: str) -> None:
+        stats["skipped_count"] += 1
+
     for md_file, page_path, base_url, meta, content in iter_public_md_files(
-        vault_path, config, single_page
+        vault_path, config, single_page, on_skipped=_track_skipped
     ):
         page, was_rebuilt = process_single_md_file(
             md_file,
@@ -320,15 +328,15 @@ def render_home_page(
     if not home_page:
         return
 
-    wiki_base_url = config.base_urls["wiki"]
+    home_base_url = home_page.get("base_url", config.base_urls["wiki"])
 
     debug(f"  Re-rendering {home_page_name} page with recent pages...")
 
     if not home_page.get("html"):
-        home_page["html"] = render_markdown(home_page["body"], wiki_base_url)
+        home_page["html"] = render_markdown(home_page["body"], home_base_url)
 
     render_page_to_file(
-        home_page, build_dir, env, config, published_pages, wiki_base_url
+        home_page, build_dir, env, config, published_pages, home_base_url
     )
 
 

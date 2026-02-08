@@ -115,18 +115,17 @@ def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -
     """
     from .resources import copy_package_files
 
-    # Copy bundled static files first
+    # Rebuild static directory from scratch each run so user overrides
+    # cannot remove bundled defaults and deleted overrides don't linger.
     bundled_static = build_dir / "static"
-    copy_package_files("foliate.defaults.static", bundled_static, force=force_rebuild)
+    if bundled_static.exists():
+        robust_rmtree(bundled_static)
+    copy_package_files("foliate.defaults.static", bundled_static, force=True)
 
     # Override with user static files if present
     user_static = vault_path / ".foliate" / "static"
     if user_static.exists():
-        copy_directory_incremental(
-            user_static,
-            build_dir / "static",
-            force_rebuild,
-        )
+        shutil.copytree(user_static, bundled_static, dirs_exist_ok=True)
 
 
 def copy_user_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> None:

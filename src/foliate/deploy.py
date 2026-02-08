@@ -60,9 +60,11 @@ def _get_newest_source_mtime(config: Config) -> float:
     """Get the most recent modification time of any source file.
 
     Source files include:
-    - Markdown files in the vault (excluding ignored folders and .foliate)
+    - Markdown/Quarto files in the vault (excluding ignored folders and .foliate)
+    - User assets in assets/
     - config.toml
     - User templates in .foliate/templates
+    - User static files in .foliate/static
 
     Args:
         config: The foliate configuration
@@ -70,6 +72,7 @@ def _get_newest_source_mtime(config: Config) -> float:
     Returns:
         Most recent mtime, or 0 if no files found
     """
+    from .assets import SUPPORTED_ASSET_EXTENSIONS
     from .build import is_path_ignored
 
     max_mtime = 0.0
@@ -78,24 +81,42 @@ def _get_newest_source_mtime(config: Config) -> float:
     if not vault_path:
         return max_mtime
 
-    # Check markdown files (excluding ignored folders and .foliate directory)
-    for md_file in vault_path.rglob("*.md"):
+    # Check markdown and quarto files (excluding ignored folders and .foliate directory)
+    for source_file in vault_path.rglob("*"):
+        if not source_file.is_file():
+            continue
+        if source_file.suffix.lower() not in {".md", ".qmd"}:
+            continue
+
         # Skip .foliate directory
         try:
-            rel_path = md_file.relative_to(vault_path)
+            rel_path = source_file.relative_to(vault_path)
             if rel_path.parts and rel_path.parts[0] == ".foliate":
                 continue
         except ValueError:
             continue
 
         # Skip ignored folders
-        if is_path_ignored(md_file, vault_path, config.build.ignored_folders):
+        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
             continue
 
         try:
-            max_mtime = max(max_mtime, md_file.stat().st_mtime)
+            max_mtime = max(max_mtime, source_file.stat().st_mtime)
         except OSError:
             pass
+
+    # Check user assets
+    assets_dir = vault_path / "assets"
+    if assets_dir.exists():
+        for asset_file in assets_dir.rglob("*"):
+            if not asset_file.is_file():
+                continue
+            if asset_file.suffix.lower() not in SUPPORTED_ASSET_EXTENSIONS:
+                continue
+            try:
+                max_mtime = max(max_mtime, asset_file.stat().st_mtime)
+            except OSError:
+                pass
 
     # Check config.toml
     config_file = vault_path / ".foliate" / "config.toml"
@@ -112,6 +133,16 @@ def _get_newest_source_mtime(config: Config) -> float:
             if template_file.is_file():
                 try:
                     max_mtime = max(max_mtime, template_file.stat().st_mtime)
+                except OSError:
+                    pass
+
+    # Check user static files
+    static_dir = vault_path / ".foliate" / "static"
+    if static_dir.exists():
+        for static_file in static_dir.rglob("*"):
+            if static_file.is_file():
+                try:
+                    max_mtime = max(max_mtime, static_file.stat().st_mtime)
                 except OSError:
                     pass
 

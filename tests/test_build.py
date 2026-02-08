@@ -1,7 +1,10 @@
 """Tests for foliate build system."""
 
+from jinja2 import Environment
+
 from foliate import build
 from foliate.config import Config
+from foliate.templates import get_template_loader
 
 
 class TestGetContentInfo:
@@ -278,6 +281,46 @@ About page content.
         # Homepage content should be at root, not /wiki/
         assert (vault_path / ".foliate" / "build" / "about" / "index.html").exists()
 
+    def test_home_page_in_homepage_dir_does_not_render_under_wiki(self, tmp_path):
+        """Home page from _homepage should only render at root location."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+home_page = "about"
+home_redirect = "about"
+"""
+        )
+
+        homepage_dir = vault_path / "_homepage"
+        homepage_dir.mkdir()
+        about_page = homepage_dir / "about.md"
+        about_page.write_text(
+            """---
+title: About
+public: true
+---
+
+About page content.
+"""
+        )
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        assert (vault_path / ".foliate" / "build" / "about" / "index.html").exists()
+        assert not (
+            vault_path / ".foliate" / "build" / "wiki" / "about" / "index.html"
+        ).exists()
+
     def test_build_ignores_private_folder(self, tmp_path):
         """Files in _private are not built."""
         vault_path = tmp_path / "vault"
@@ -432,3 +475,37 @@ Home page.
         # With empty wiki_prefix, there's no wiki directory to redirect
         wiki_dir = vault_path / ".foliate" / "build" / "wiki"
         assert not wiki_dir.exists()
+
+
+class TestBuildStats:
+    """Tests for build statistics reporting."""
+
+    def test_process_markdown_files_counts_skipped_private_pages(self, tmp_path):
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[site]\nname = 'Test'")
+
+        (vault_path / "public.md").write_text("---\npublic: true\n---\nPublic")
+        (vault_path / "private.md").write_text("---\npublic: false\n---\nPrivate")
+
+        config = Config.load(config_path)
+        build_dir = config.get_build_dir()
+        build_dir.mkdir(parents=True, exist_ok=True)
+        env = Environment(loader=get_template_loader(vault_path))
+
+        _, _, _, stats = build.process_markdown_files(
+            vault_path=vault_path,
+            build_dir=build_dir,
+            env=env,
+            config=config,
+            build_cache={},
+            force_rebuild=False,
+            incremental=False,
+        )
+
+        assert stats["rebuilt_count"] == 1
+        assert stats["skipped_count"] == 1

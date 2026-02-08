@@ -35,6 +35,9 @@ class TestExtractWikiPath:
     def test_returns_none_for_root_wiki_path(self):
         assert extract_wiki_path("/wiki/", "wiki") is None
 
+    def test_extracts_path_with_empty_wiki_prefix(self):
+        assert extract_wiki_path("/PageName/", "") == "PageName"
+
 
 class TestSanitizeWikilinks:
     """Tests for sanitize_wikilinks function."""
@@ -126,6 +129,18 @@ class TestSanitizeWikilinks:
 
         assert modified is True
         assert "<strong>Bold Private</strong>" in result
+        assert "<a" not in result
+
+    def test_removes_private_link_with_empty_wiki_prefix(self):
+        html = '<p><a href="/PrivatePage/" class="wikilink">Private</a></p>'
+        public_pages = set()
+
+        result, modified, count, _ = sanitize_wikilinks(
+            html, public_pages, wiki_prefix=""
+        )
+
+        assert modified is True
+        assert count == 1
         assert "<a" not in result
 
 

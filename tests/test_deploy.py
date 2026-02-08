@@ -167,6 +167,42 @@ class TestIsBuildStale:
             # Should be fresh because cache is not a source
             assert result is False
 
+    def test_returns_true_when_asset_modified_after_build(self):
+        """Should return True when user asset files are newer than build."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            build_dir = vault / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html>Test</html>")
+
+            time.sleep(0.05)
+            assets_dir = vault / "assets"
+            assets_dir.mkdir()
+            (assets_dir / "image.png").write_text("png")
+
+            result = is_build_stale(config)
+            assert result is True
+
+    def test_returns_true_when_qmd_modified_after_build(self):
+        """Should return True when .qmd source files are newer than build."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            build_dir = vault / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html>Test</html>")
+
+            time.sleep(0.05)
+            (vault / "paper.qmd").write_text("# QMD")
+
+            result = is_build_stale(config)
+            assert result is True
+
 
 class TestDeployGithubPages:
     """Tests for deploy_github_pages function."""

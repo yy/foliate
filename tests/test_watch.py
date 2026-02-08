@@ -244,6 +244,21 @@ class TestFoliateEventHandler:
 
             mock_preprocess.assert_not_called()
 
+    def test_uppercase_qmd_triggers_preprocessing_when_enabled(self, handler, tmp_path):
+        """Uppercase .QMD extension should still trigger preprocessing."""
+        handler.config.advanced.quarto_enabled = True
+        qmd_path = tmp_path / "paper.QMD"
+        qmd_path.touch()
+        handler.pending_changes = [str(qmd_path)]
+
+        with patch("foliate.quarto.preprocess_quarto") as mock_preprocess:
+            handler.process_changes()
+
+            mock_preprocess.assert_called_once()
+            call_args = mock_preprocess.call_args
+            assert call_args[0][0] == handler.config
+            assert call_args[1]["single_file"] == qmd_path
+
     # --- Debounce Behavior Tests ---
 
     def test_debounce_prevents_rapid_rebuilds(self, config):
