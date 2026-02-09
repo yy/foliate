@@ -40,18 +40,19 @@ class FoliateEventHandler(FileSystemEventHandler):
             return
 
         src_path = event.src_path
+        normalized_path = src_path.replace("\\", "/")
 
         # Ignore hidden files, git, build directory, and cache directory
         if (
-            "/.git/" in src_path
-            or "/.foliate/build/" in src_path
-            or "/.foliate/cache/" in src_path
+            "/.git/" in normalized_path
+            or "/.foliate/build/" in normalized_path
+            or "/.foliate/cache/" in normalized_path
         ):
             return
 
         # Check for ignored folders from config
         for folder in self.config.build.ignored_folders:
-            if f"/{folder}/" in src_path:
+            if f"/{folder}/" in normalized_path:
                 return
 
         # Check if it's a relevant file type

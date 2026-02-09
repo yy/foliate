@@ -604,6 +604,34 @@ class TestCreateFeedItems:
 
         assert len(items) == 3
 
+    def test_renders_content_from_body_when_html_missing(self):
+        """Falls back to markdown body rendering for cached pages."""
+        from foliate.feed import create_feed_items
+
+        now = datetime.now(timezone.utc)
+        recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        pages = [
+            {
+                "path": "CachedPage",
+                "title": "Cached Page",
+                "url": "/wiki/CachedPage/",
+                "html": "",
+                "body": "# Heading\n\nRendered body text.",
+                "base_url": "/wiki/",
+                "meta": {"published": recent},
+                "file_mtime": now.timestamp(),
+            }
+        ]
+
+        items = create_feed_items(
+            pages, "https://example.com", full_content=True, max_items=10
+        )
+
+        assert len(items) == 1
+        assert "Rendered body text." in items[0].content
+        assert "<h1" in items[0].content
+
 
 class TestGenerateFeed:
     """Integration tests for generate_feed function."""

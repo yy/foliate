@@ -476,6 +476,44 @@ Home page.
         wiki_dir = vault_path / ".foliate" / "build" / "wiki"
         assert not wiki_dir.exists()
 
+    def test_single_page_build_does_not_regenerate_global_indexes(self, tmp_path):
+        """single_page build should not overwrite search/sitemap with partial data."""
+        import json
+
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://example.com"
+"""
+        )
+
+        (vault_path / "Alpha.md").write_text("---\npublic: true\n---\nAlpha")
+        (vault_path / "Beta.md").write_text("---\npublic: true\n---\nBeta")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        search_file = vault_path / ".foliate" / "build" / "wiki" / "search.json"
+        sitemap_file = vault_path / ".foliate" / "build" / "sitemap.txt"
+        search_before = json.loads(search_file.read_text())
+        sitemap_before = sitemap_file.read_text()
+
+        build.build(config=config, force_rebuild=False, single_page="Alpha")
+
+        search_after = json.loads(search_file.read_text())
+        sitemap_after = sitemap_file.read_text()
+
+        assert len(search_before) == 2
+        assert len(search_after) == 2
+        assert sitemap_before == sitemap_after
+
 
 class TestBuildStats:
     """Tests for build statistics reporting."""

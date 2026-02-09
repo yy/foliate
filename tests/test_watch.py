@@ -56,6 +56,14 @@ class TestFoliateEventHandler:
 
         assert handler.pending_changes == []
 
+    def test_ignores_build_directory_windows_path(self, handler):
+        """Should ignore Windows-style paths in .foliate/build."""
+        event = FileModifiedEvent(r"C:\vault\.foliate\build\index.html")
+
+        handler.on_any_event(event)
+
+        assert handler.pending_changes == []
+
     def test_ignores_configured_folders(self, handler):
         """Should ignore events in folders listed in ignored_folders config."""
         # Test _private folder
@@ -65,6 +73,13 @@ class TestFoliateEventHandler:
 
         # Test drafts folder
         event = FileModifiedEvent("/path/to/vault/drafts/wip.md")
+        handler.on_any_event(event)
+        assert handler.pending_changes == []
+
+    def test_ignores_configured_folders_windows_path(self, handler):
+        """Should ignore Windows-style paths in configured ignored folders."""
+        event = FileModifiedEvent(r"C:\vault\_private\secret.md")
+
         handler.on_any_event(event)
         assert handler.pending_changes == []
 

@@ -94,11 +94,13 @@ def extract_description(markdown_content: str, max_length: int = 160) -> str:
     for pattern, replacement in _DESCRIPTION_PATTERNS:
         content = pattern.sub(replacement, content)
 
-    # Normalize whitespace
-    content = _WHITESPACE_PATTERN.sub(" ", content).strip()
-
     # Get first meaningful paragraph (at least 50 chars)
-    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+    paragraphs = []
+    for para in re.split(r"\n\s*\n+", content):
+        cleaned = _WHITESPACE_PATTERN.sub(" ", para).strip()
+        if cleaned:
+            paragraphs.append(cleaned)
+
     for para in paragraphs:
         if len(para) >= 50:
             content = para

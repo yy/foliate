@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 # Re-export FeedConfig from config for convenience
 from .config import FeedConfig
+from .markdown_utils import render_markdown
 
 __all__ = ["FeedConfig", "FeedItem", "generate_feed"]
 
@@ -283,6 +284,12 @@ def create_feed_items(
 
         url = f"{site_url}{page['url']}"
         content = page.get("html", "")
+        if not content and page.get("body"):
+            content = render_markdown(
+                page["body"],
+                page.get("base_url", "/wiki/"),
+            )
+
         summary = extract_summary(content) if not full_content else None
 
         item = FeedItem(

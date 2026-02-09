@@ -568,8 +568,9 @@ def build(
     if not single_page:
         render_home_page(public_pages, published_pages, build_dir, env, config)
 
-    # Generate site files
-    generate_site_files(build_dir, env, config, published_pages, public_pages)
+    # Generate site-wide files only for full builds.
+    if not single_page:
+        generate_site_files(build_dir, env, config, published_pages, public_pages)
 
     # Generate Atom feed
     if config.feed.enabled and not single_page:

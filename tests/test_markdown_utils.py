@@ -94,6 +94,17 @@ class TestExtractDescription:
         assert len(result) <= 100
         assert result.endswith("...")
 
+    def test_prefers_first_meaningful_paragraph(self):
+        """Selects the first paragraph that has enough substance."""
+        content = (
+            "Intro.\n\n"
+            "This second paragraph is long enough to be chosen as the description "
+            "for this page and should be preferred."
+        )
+        result = markdown_utils.extract_description(content)
+        assert result.startswith("This second paragraph is long enough")
+        assert "Intro." not in result
+
     def test_strips_math_blocks(self):
         """Removes math blocks."""
         content = "The equation $$E = mc^2$$ is famous and describes mass-energy equivalence clearly."
