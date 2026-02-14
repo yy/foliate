@@ -202,8 +202,8 @@ quarto_python = "/path/to/python"  # Optional: Python for Quarto
 
 Foliate uses a cross-platform GitHub Actions CI workflow on pull requests and `main` pushes:
 
-- Test matrix: Linux, macOS, Windows on Python 3.12 and 3.13
-- Build + smoke matrix: Linux, macOS, Windows (Python 3.13), including wheel install and CLI smoke checks
+- Test matrix: Linux, macOS on Python 3.12 and 3.13
+- Build + smoke matrix: Linux, macOS (Python 3.13), including wheel install and CLI smoke checks
 
 Releases remain manual via:
 
