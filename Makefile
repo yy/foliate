@@ -1,4 +1,4 @@
-.PHONY: build clean test publish
+.PHONY: build clean test ci publish
 
 build: clean
 	uv build
@@ -8,6 +8,10 @@ clean:
 
 test:
 	uv run pytest
+
+ci:
+	uv run pytest -q
+	uv build
 
 publish: build
 	uv publish
