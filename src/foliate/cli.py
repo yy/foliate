@@ -70,7 +70,7 @@ def init(force: bool):
 
     # Copy config
     default_config = get_default_config_content()
-    config_file.write_text(default_config)
+    config_file.write_text(default_config, encoding="utf-8")
     click.echo(f"Created {config_file}")
 
     # Copy templates

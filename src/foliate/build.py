@@ -183,7 +183,7 @@ def iter_public_md_files(
             continue
 
         rel_path = md_file.relative_to(vault_path)
-        page_path = str(rel_path.with_suffix(""))
+        page_path = rel_path.with_suffix("").as_posix()
 
         page_path, content_base_url, _ = get_content_info(
             page_path, homepage_dir, wiki_base_url
@@ -378,7 +378,7 @@ def generate_sitemap(
 ) -> None:
     """Generate sitemap.txt with all public page URLs."""
     sitemap_lines = [f"{base_url}{page['path']}/" for page in public_pages]
-    (build_dir / "sitemap.txt").write_text("\n".join(sitemap_lines))
+    (build_dir / "sitemap.txt").write_text("\n".join(sitemap_lines), encoding="utf-8")
 
 
 def generate_site_files(
@@ -399,7 +399,7 @@ def generate_site_files(
         redirect_url=home_url,
         redirect_title=config.build.home_redirect.title(),
     )
-    (build_dir / "index.html").write_text(home_html)
+    (build_dir / "index.html").write_text(home_html, encoding="utf-8")
 
     # Generate wiki root redirect (only if wiki_prefix is set)
     if wiki_dir_name:
@@ -410,7 +410,7 @@ def generate_site_files(
         )
         wiki_dir = build_dir / wiki_dir_name
         wiki_dir.mkdir(parents=True, exist_ok=True)
-        (wiki_dir / "index.html").write_text(wiki_redirect_html)
+        (wiki_dir / "index.html").write_text(wiki_redirect_html, encoding="utf-8")
 
     generate_search_index(build_dir, public_pages, wiki_base_url, wiki_dir_name)
     generate_sitemap(build_dir, public_pages, wiki_base_url)

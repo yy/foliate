@@ -304,7 +304,7 @@ class TestDeployCommand:
 name = "Test"
 
 [deploy]
-target = "{target.resolve()}"
+target = "{target.resolve().as_posix()}"
 """
             )
 
@@ -333,7 +333,7 @@ target = "{target.resolve()}"
 name = "Test"
 
 [deploy]
-target = "{target.resolve()}"
+target = "{target.resolve().as_posix()}"
 """
             )
 
@@ -364,7 +364,7 @@ target = "{target.resolve()}"
 name = "Test"
 
 [deploy]
-target = "{target.resolve()}"
+target = "{target.resolve().as_posix()}"
 """
             )
 
@@ -395,7 +395,7 @@ target = "{target.resolve()}"
 name = "Test"
 
 [deploy]
-target = "{target.resolve()}"
+target = "{target.resolve().as_posix()}"
 """
             )
 

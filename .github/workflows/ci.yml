@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.12", "3.13"]
 
     steps:
@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -70,13 +70,25 @@ jobs:
       - name: Build distribution
         run: uv build
 
-      - name: Smoke test wheel
+      - name: Smoke test wheel (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           python -m venv .venv-smoke
           source .venv-smoke/bin/activate
           python -m pip install --upgrade pip
           python -m pip install dist/foliate-*.whl
+          foliate --version
+          foliate --help
+
+      - name: Smoke test wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m venv .venv-smoke
+          .venv-smoke\Scripts\Activate.ps1
+          python -m pip install --upgrade pip
+          python -m pip install (Get-Item dist\foliate-*.whl)
           foliate --version
           foliate --help
 
