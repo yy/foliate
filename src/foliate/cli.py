@@ -122,10 +122,13 @@ def build(force: bool, verbose: bool, serve: bool, port: int):
         from .resources import start_dev_server
 
         build_dir = config.get_build_dir()
-        click.echo(f"\nStarting server at http://localhost:{port}")
-        click.echo("Press Ctrl+C to stop")
         try:
+            click.echo(f"\nStarting server at http://localhost:{port}")
+            click.echo("Press Ctrl+C to stop")
             start_dev_server(build_dir, port, background=False)
+        except OSError as e:
+            click.echo(f"\nError: {e}", err=True)
+            raise SystemExit(1)
         except KeyboardInterrupt:
             click.echo("\nServer stopped")
 

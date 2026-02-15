@@ -152,6 +152,25 @@ def get_package_file_path(package: str, filename: str) -> Path | None:
     return None
 
 
+def check_port_available(port: int) -> bool:
+    """Check if a TCP port is available for binding.
+
+    Args:
+        port: Port number to check
+
+    Returns:
+        True if the port is available, False if already in use
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("localhost", port))
+            return True
+        except OSError:
+            return False
+
+
 def start_dev_server(
     build_dir: Path,
     port: int = 8000,
@@ -167,18 +186,34 @@ def start_dev_server(
 
     Returns:
         subprocess.Popen if background=True, None otherwise
+
+    Raises:
+        OSError: If the port is already in use
     """
     import subprocess
     import sys
 
+    if not check_port_available(port):
+        raise OSError(f"Port {port} is already in use")
+
     cmd = [sys.executable, "-m", "http.server", str(port)]
 
     if background:
-        return subprocess.Popen(
+        import time
+
+        proc = subprocess.Popen(
             cmd,
             cwd=str(build_dir),
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
+        # Brief delay to let the server attempt to bind
+        time.sleep(0.3)
+        if proc.poll() is not None:
+            stderr_output = proc.stderr.read().decode() if proc.stderr else ""
+            raise OSError(
+                f"Server failed to start on port {port}: {stderr_output.strip()}"
+            )
+        return proc
     else:
         subprocess.run(cmd, cwd=str(build_dir))

@@ -134,10 +134,16 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     from .resources import start_dev_server
 
     build_dir = config.get_build_dir()
-    server_process = start_dev_server(build_dir, port, background=True)
+    server_process = None
+    try:
+        server_process = start_dev_server(build_dir, port, background=True)
+        info("=" * 60)
+        info(f"Server started: http://localhost:{port}")
+    except OSError as e:
+        error(f"Could not start server: {e}")
+        info("=" * 60)
+        info("Continuing in watch-only mode (no server)")
 
-    info("=" * 60)
-    info(f"Server started: http://localhost:{port}")
     info("Watching for changes... (Press Ctrl+C to stop)")
     info("=" * 60)
 
