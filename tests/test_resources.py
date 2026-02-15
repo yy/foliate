@@ -1,15 +1,20 @@
 """Tests for resources module."""
 
+import socket
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from foliate.resources import (
+    check_port_available,
     copy_package_files,
     expand_path,
     get_package_file_path,
     iter_package_files,
     read_package_bytes,
     read_package_text,
+    start_dev_server,
 )
 
 
@@ -140,3 +145,53 @@ class TestGetPackageFilePath:
     def test_returns_none_for_missing_file(self):
         result = get_package_file_path("foliate.defaults", "nonexistent.txt")
         assert result is None
+
+
+class TestCheckPortAvailable:
+    """Tests for check_port_available function."""
+
+    def test_available_port_returns_true(self):
+        """An unused port should be reported as available."""
+        # Use port 0 to get a free port, then check that port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            _, free_port = s.getsockname()
+        # Port is now free (socket closed)
+        assert check_port_available(free_port) is True
+
+    def test_occupied_port_returns_false(self):
+        """A port in use should be reported as unavailable."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            s.listen(1)
+            _, occupied_port = s.getsockname()
+            assert check_port_available(occupied_port) is False
+
+
+class TestStartDevServer:
+    """Tests for start_dev_server function."""
+
+    def test_raises_on_occupied_port(self, tmp_path):
+        """Should raise OSError when port is already in use."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            s.listen(1)
+            _, occupied_port = s.getsockname()
+
+            with pytest.raises(OSError, match="already in use"):
+                start_dev_server(tmp_path, port=occupied_port, background=True)
+
+    def test_background_server_starts_on_free_port(self, tmp_path):
+        """Should successfully start a server on a free port."""
+        # Get a free port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            _, free_port = s.getsockname()
+
+        proc = start_dev_server(tmp_path, port=free_port, background=True)
+        try:
+            assert proc is not None
+            assert proc.poll() is None  # Still running
+        finally:
+            proc.terminate()
+            proc.wait()

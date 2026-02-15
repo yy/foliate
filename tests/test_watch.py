@@ -545,6 +545,27 @@ class TestWatchFunction:
             # Should still stop observer without error
             mock_observer.stop.assert_called_once()
 
+    def test_watch_continues_when_port_occupied(self, config):
+        """Watch should continue in watch-only mode when port is occupied."""
+        with (
+            patch("foliate.watch.do_build"),
+            patch("foliate.resources.start_dev_server") as mock_server,
+            patch("foliate.watch.Observer") as mock_observer_class,
+            patch("foliate.watch.time.sleep") as mock_sleep,
+        ):
+            mock_observer = MagicMock()
+            mock_observer_class.return_value = mock_observer
+            mock_server.side_effect = OSError("Port 8000 is already in use")
+
+            mock_sleep.side_effect = KeyboardInterrupt()
+
+            # Should not raise - watch continues without server
+            watch(config)
+
+            # Observer should still be set up and started
+            mock_observer.schedule.assert_called()
+            mock_observer.stop.assert_called_once()
+
 
 class TestRebuildCallback:
     """Tests for the rebuild callback created in watch()."""
