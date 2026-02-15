@@ -35,6 +35,10 @@ homepage_dir = "_homepage"
 # Set to empty string "" to deploy wiki content at root
 wiki_prefix = "wiki"
 
+# Wiki home page - used as the redirect target for /wiki/ and for recent pages list
+# Visiting /wiki/ will redirect to /wiki/{home_page}/
+home_page = "Home"
+
 # Enable incremental builds (only rebuild changed files)
 incremental = true
 
