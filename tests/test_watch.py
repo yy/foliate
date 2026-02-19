@@ -404,7 +404,7 @@ class TestWatchFunction:
             except KeyboardInterrupt:
                 pass
 
-            mock_build.assert_called_once_with(config=config, force_rebuild=False)
+            mock_build.assert_called_once_with(config=config, force_rebuild=True)
 
     def test_watch_starts_dev_server(self, config):
         """Watch should start a development server."""

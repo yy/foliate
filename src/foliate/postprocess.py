@@ -2,6 +2,7 @@
 
 Sanitizes wikilinks in generated HTML files:
 - Removes links to private (non-public) pages, converting them to plain text
+  markers that can be restored later if the page becomes public
 - Cleans escaped dollar signs to prevent KaTeX processing issues
 """
 
@@ -41,7 +42,7 @@ def sanitize_wikilinks(
     public_pages: set[str],
     wiki_prefix: str = "wiki",
 ) -> tuple[str, bool, int, bool]:
-    """Remove wikilinks to private pages, convert to plain text.
+    """Remove wikilinks to private pages and restore previously private links.
 
     Args:
         html_content: HTML content to process
@@ -59,6 +60,20 @@ def sanitize_wikilinks(
     modified = False
     removed_links_count = 0
 
+    # Restore previously sanitized private links if target pages are now public.
+    private_spans = soup.find_all("span", class_="wikilink-private")
+    for span in private_spans:
+        wiki_path = span.get("data-wiki-path", "")
+        if wiki_path and wiki_path in public_pages:
+            href = f"/{wiki_prefix}/{wiki_path}/" if wiki_prefix else f"/{wiki_path}/"
+            span.name = "a"
+            span.attrs = {
+                "class": ["wikilink"],
+                "href": href,
+                "rel": "nofollow",
+            }
+            modified = True
+
     # Find all wikilinks
     wikilinks = soup.find_all("a", class_="wikilink")
 
@@ -67,9 +82,14 @@ def sanitize_wikilinks(
         wiki_path = extract_wiki_path(href, wiki_prefix)
 
         if wiki_path and wiki_path not in public_pages:
-            # This is a link to a private page - unwrap to preserve inner HTML
+            # This is a link to a private page.
+            # Convert it to a span marker so future builds can restore it.
             debug(f"    Removed private link: {wiki_path} -> {link.get_text()}")
-            link.unwrap()
+            link.name = "span"
+            link.attrs = {
+                "class": ["wikilink-private"],
+                "data-wiki-path": wiki_path,
+            }
             modified = True
             removed_links_count += 1
 

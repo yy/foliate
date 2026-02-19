@@ -127,8 +127,8 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     info("Watch mode: Building initial site...")
     info("=" * 60)
 
-    # Initial build
-    do_build(config=config, force_rebuild=False)
+    # Initial build from source to avoid stale post-processed HTML from prior runs.
+    do_build(config=config, force_rebuild=True)
 
     # Start HTTP server in background
     from .resources import start_dev_server

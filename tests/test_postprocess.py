@@ -42,7 +42,7 @@ class TestExtractWikiPath:
 class TestSanitizeWikilinks:
     """Tests for sanitize_wikilinks function."""
 
-    def test_removes_private_link(self):
+    def test_converts_private_link_to_reversible_span(self):
         html = '<p><a href="/wiki/PrivatePage/" class="wikilink">Private</a></p>'
         public_pages = set()  # No public pages
 
@@ -50,9 +50,10 @@ class TestSanitizeWikilinks:
 
         assert modified is True
         assert count == 1
-        assert "PrivatePage" not in result
         assert "Private" in result  # Text preserved
-        assert "<a" not in result  # Link removed
+        assert "<a" not in result
+        assert 'class="wikilink-private"' in result
+        assert 'data-wiki-path="PrivatePage"' in result
 
     def test_keeps_public_link(self):
         html = '<p><a href="/wiki/PublicPage/" class="wikilink">Public</a></p>'
@@ -121,7 +122,7 @@ class TestSanitizeWikilinks:
         assert "\\$" in result
         assert cleaned_dollars is False
 
-    def test_preserves_inner_html_when_unwrapping(self):
+    def test_preserves_inner_html_when_converting_to_span(self):
         html = '<p><a href="/wiki/Private/" class="wikilink"><strong>Bold Private</strong></a></p>'
         public_pages = set()
 
@@ -130,6 +131,18 @@ class TestSanitizeWikilinks:
         assert modified is True
         assert "<strong>Bold Private</strong>" in result
         assert "<a" not in result
+        assert "<span" in result
+
+    def test_restores_private_span_when_target_becomes_public(self):
+        html = '<p><span class="wikilink-private" data-wiki-path="Traffic evaporation">Traffic evaporation</span></p>'
+        public_pages = {"Traffic evaporation"}
+
+        result, modified, count, _ = sanitize_wikilinks(html, public_pages)
+
+        assert modified is True
+        assert count == 0
+        assert '<a class="wikilink" href="/wiki/Traffic evaporation/" rel="nofollow">' in result
+        assert "wikilink-private" not in result
 
     def test_removes_private_link_with_empty_wiki_prefix(self):
         html = '<p><a href="/PrivatePage/" class="wikilink">Private</a></p>'
@@ -158,6 +171,7 @@ class TestProcessHtmlFile:
             assert result is True
             content = html_file.read_text()
             assert "<a" not in content
+            assert 'class="wikilink-private"' in content
 
     def test_returns_false_when_no_changes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -198,6 +212,7 @@ class TestPostprocessLinks:
             assert result is True
             content = (wiki_dir / "index.html").read_text()
             assert "<a" not in content
+            assert 'class="wikilink-private"' in content
 
     def test_returns_false_for_missing_build_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
