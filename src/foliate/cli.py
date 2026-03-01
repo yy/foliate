@@ -92,10 +92,13 @@ def init(force: bool):
 
 @main.command()
 @click.option("--force", "-f", is_flag=True, help="Force full rebuild")
+@click.option(
+    "--dry-run", "-n", is_flag=True, help="Show what would be built without writing files"
+)
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.option("--serve", "-s", is_flag=True, help="Start local server after build")
 @click.option("--port", "-p", default=8000, help="Server port")
-def build(force: bool, verbose: bool, serve: bool, port: int):
+def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
     """Build the static site."""
     from .build import build as do_build
     from .logging import setup_logging
@@ -108,6 +111,19 @@ def build(force: bool, verbose: bool, serve: bool, port: int):
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
+
+    if dry_run:
+        from .status import format_build_dry_run_report, scan_status
+
+        if serve:
+            click.echo("Error: --serve cannot be used with --dry-run", err=True)
+            raise SystemExit(1)
+
+        report = scan_status(config)
+        click.echo(
+            format_build_dry_run_report(report, force_rebuild=force, verbose=verbose)
+        )
+        return
 
     result = do_build(
         config=config,

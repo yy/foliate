@@ -7,7 +7,7 @@ and whether they are new, modified, or unchanged since the last build.
 from dataclasses import dataclass
 from pathlib import Path
 
-from .build import get_content_info, is_path_ignored
+from .build import get_content_info, get_output_path, is_path_ignored
 from .cache import BUILD_CACHE_FILE, check_global_deps_changed, load_build_cache
 from .config import Config
 from .markdown_utils import parse_markdown_file
@@ -77,10 +77,7 @@ def _get_page_state(
         "new", "modified", or "unchanged"
     """
     # Determine expected output file
-    if base_url == "/":
-        output_file = build_dir / page_path / "index.html"
-    else:
-        output_file = build_dir / wiki_dir_name / page_path / "index.html"
+    output_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
 
     if not output_file.exists():
         return "new"
@@ -126,10 +123,17 @@ def scan_status(config: Config) -> StatusReport:
         and check_global_deps_changed(build_cache, config.config_path, vault_path)
     ):
         force_rebuild_all = True
+        build_cache = {}
 
     pages: list[PageStatus] = []
 
-    for md_file in sorted(vault_path.glob("**/*.md")):
+    # Glob .md files, and .qmd files if Quarto is enabled
+    globs = ["**/*.md"]
+    if config.advanced.quarto_enabled:
+        globs.append("**/*.qmd")
+    source_files = sorted(f for pattern in globs for f in vault_path.glob(pattern))
+
+    for md_file in source_files:
         if is_path_ignored(md_file, vault_path, ignored_folders):
             continue
 
@@ -227,5 +231,53 @@ def format_status_report(report: StatusReport, verbose: bool = False) -> str:
         f"{len(private)} private",
     ]
     lines.append("Summary: " + ", ".join(summary_parts))
+
+    return "\n".join(lines)
+
+
+def format_build_dry_run_report(
+    report: StatusReport, force_rebuild: bool = False, verbose: bool = False
+) -> str:
+    """Format a dry-run preview of what `foliate build` would do."""
+    lines: list[str] = ["Dry run: no files will be written."]
+
+    if force_rebuild:
+        build_candidates = report.public_pages
+    else:
+        build_candidates = report.new_pages + report.modified_pages
+
+    lines.append(f"Would build ({len(build_candidates)}):")
+    for p in build_candidates:
+        pub = " [published]" if p.published else ""
+        state = "forced" if force_rebuild else p.state
+        lines.append(f"  + {p.page_path} ({state}){pub}")
+
+    if verbose and not force_rebuild and report.unchanged_pages:
+        lines.append("")
+        lines.append(f"Cached/unchanged ({len(report.unchanged_pages)}):")
+        for p in report.unchanged_pages:
+            pub = " [published]" if p.published else ""
+            lines.append(f"    {p.page_path}{pub}")
+
+    if report.private_pages:
+        lines.append("")
+        lines.append(f"Private pages ({len(report.private_pages)}, skipped)")
+        if verbose:
+            for p in report.private_pages:
+                pub = " [published]" if p.published else ""
+                lines.append(f"  - {p.page_path}{pub}")
+
+    lines.append("")
+    lines.append(
+        "Summary: "
+        + ", ".join(
+            [
+                f"{len(report.public_pages)} public",
+                f"{len(report.published_pages)} published",
+                f"{len(build_candidates)} would build",
+                f"{len(report.private_pages)} private",
+            ]
+        )
+    )
 
     return "\n".join(lines)

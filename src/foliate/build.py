@@ -70,6 +70,25 @@ def get_content_info(
     return page_path, base_url, is_homepage
 
 
+def get_output_path(
+    build_dir: Path, page_path: str, base_url: str, wiki_dir_name: str
+) -> Path:
+    """Determine the output file path for a page.
+
+    Args:
+        build_dir: The build output directory
+        page_path: The page's path (e.g. "about" or "Notes/Ideas")
+        base_url: The content base URL ("/" for homepage, "/wiki/" for wiki)
+        wiki_dir_name: The wiki directory name (e.g. "wiki")
+
+    Returns:
+        Path to the output index.html file
+    """
+    if base_url == "/":
+        return build_dir / page_path / "index.html"
+    return build_dir / wiki_dir_name / page_path / "index.html"
+
+
 def create_page_object(
     page_path: str,
     meta: dict,
@@ -229,10 +248,7 @@ def process_single_md_file(
     wiki_dir = config.build.wiki_prefix.strip("/")
 
     # Determine output path
-    if content_base_url == "/":
-        output_file = build_dir / page_path / "index.html"
-    else:
-        output_file = build_dir / wiki_dir / page_path / "index.html"
+    output_file = get_output_path(build_dir, page_path, content_base_url, wiki_dir)
 
     # Check if rebuild needed
     if incremental and not needs_rebuild(

@@ -1,7 +1,12 @@
 """Tests for foliate status module."""
 
 from foliate.config import Config
-from foliate.status import PageStatus, StatusReport, format_status_report, scan_status
+from foliate.status import (
+    PageStatus,
+    StatusReport,
+    format_status_report,
+    scan_status,
+)
 
 
 def _make_vault(tmp_path, pages: dict[str, dict]) -> Config:
@@ -128,6 +133,7 @@ class TestScanStatus:
 
     def test_modified_after_edit(self, tmp_path):
         """Page shows as 'modified' when source is newer than cache."""
+        import os
         import time
 
         from foliate.build import build
@@ -142,10 +148,11 @@ class TestScanStatus:
         )
         build(config=config, force_rebuild=True)
 
-        # Edit the file (ensure mtime changes)
-        time.sleep(0.05)
+        # Edit the file and set mtime clearly in the future
         md_file = config.vault_path / "test.md"
         md_file.write_text("---\ntitle: Test\npublic: true\n---\nUpdated.\n")
+        future = time.time() + 2
+        os.utime(md_file, (future, future))
 
         report = scan_status(config)
         assert len(report.modified_pages) == 1
@@ -205,6 +212,7 @@ home_redirect = "about"
 
     def test_global_config_change_marks_pages_modified(self, tmp_path):
         """Config mtime changes should mark existing pages as modified."""
+        import os
         import time
 
         from foliate.build import build
@@ -219,10 +227,11 @@ home_redirect = "about"
         )
         build(config=config, force_rebuild=True)
 
-        # Ensure config mtime increases after cache snapshot.
-        time.sleep(0.05)
+        # Touch config with mtime clearly in the future
         assert config.config_path is not None
         config.config_path.write_text(config.config_path.read_text() + "\n# updated\n")
+        future = time.time() + 2
+        os.utime(config.config_path, (future, future))
 
         report = scan_status(config)
         assert report.public_pages[0].state == "modified"
@@ -375,3 +384,109 @@ class TestFormatStatusReport:
         report = StatusReport(pages=pages)
         output = format_status_report(report)
         assert "1 published" in output
+
+
+class TestFormatBuildDryRunReport:
+    """Tests for format_build_dry_run_report()."""
+
+    def test_normal_mode_shows_new_and_modified(self):
+        """Non-force mode shows only new and modified pages."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("new-page", None, "/wiki/", False, True, False, "new"),
+            PageStatus("mod-page", None, "/wiki/", False, True, False, "modified"),
+            PageStatus("old-page", None, "/wiki/", False, True, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+        output = format_build_dry_run_report(report)
+        assert "Would build (2)" in output
+        assert "new-page" in output
+        assert "mod-page" in output
+        assert "old-page" not in output
+
+    def test_force_rebuild_shows_all_public(self):
+        """Force rebuild mode shows all public pages."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("page-a", None, "/wiki/", False, True, False, "new"),
+            PageStatus("page-b", None, "/wiki/", False, True, False, "unchanged"),
+            PageStatus("private", None, "/wiki/", False, False, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+        output = format_build_dry_run_report(report, force_rebuild=True)
+        assert "Would build (2)" in output
+        assert "page-a" in output
+        assert "page-b" in output
+        assert "(forced)" in output
+
+    def test_verbose_shows_unchanged(self):
+        """Verbose mode shows cached/unchanged pages."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("new-page", None, "/wiki/", False, True, False, "new"),
+            PageStatus("cached", None, "/wiki/", False, True, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+
+        output_quiet = format_build_dry_run_report(report, verbose=False)
+        assert "Cached/unchanged" not in output_quiet
+
+        output_verbose = format_build_dry_run_report(report, verbose=True)
+        assert "Cached/unchanged (1)" in output_verbose
+        assert "cached" in output_verbose
+
+    def test_private_pages_count_only_without_verbose(self):
+        """Private pages show count only without verbose."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("public", None, "/wiki/", False, True, False, "new"),
+            PageStatus("secret-a", None, "/wiki/", False, False, False, "unchanged"),
+            PageStatus("secret-b", None, "/wiki/", False, False, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+
+        output = format_build_dry_run_report(report, verbose=False)
+        assert "Private pages (2, skipped)" in output
+        assert "secret-a" not in output
+
+    def test_private_pages_listed_with_verbose(self):
+        """Private pages are listed individually with verbose."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("public", None, "/wiki/", False, True, False, "new"),
+            PageStatus("secret-a", None, "/wiki/", False, False, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+
+        output = format_build_dry_run_report(report, verbose=True)
+        assert "Private pages (1, skipped)" in output
+        assert "secret-a" in output
+
+    def test_summary_line(self):
+        """Summary line has correct counts."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("pub1", None, "/wiki/", False, True, True, "new"),
+            PageStatus("pub2", None, "/wiki/", False, True, False, "modified"),
+            PageStatus("priv", None, "/wiki/", False, False, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+        output = format_build_dry_run_report(report)
+        assert "2 public" in output
+        assert "1 published" in output
+        assert "2 would build" in output
+        assert "1 private" in output
+
+    def test_dry_run_header(self):
+        """Output starts with dry run notice."""
+        from foliate.status import format_build_dry_run_report
+
+        report = StatusReport(pages=[])
+        output = format_build_dry_run_report(report)
+        assert output.startswith("Dry run: no files will be written.")

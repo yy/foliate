@@ -154,6 +154,51 @@ class TestBuildCommand:
             # Should complete (exit 0) or fail for other reasons
             assert result.exit_code in [0, 1]
 
+    def test_dry_run_lists_pages_without_writing_files(self):
+        """--dry-run should preview pages and avoid writing build output."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            runner.invoke(main, ["init"])
+            Path("public.md").write_text("---\npublic: true\n---\n# Public")
+            Path("private.md").write_text("---\n---\n# Private")
+
+            result = runner.invoke(main, ["build", "--dry-run"])
+
+            assert result.exit_code == 0
+            assert "Dry run: no files will be written." in result.output
+            assert "Would build (1):" in result.output
+            assert "+ public (new)" in result.output
+            assert "Private pages (1, skipped)" in result.output
+            assert not Path(".foliate/build").exists()
+
+    def test_dry_run_force_lists_all_public_pages(self):
+        """--dry-run --force should show all public pages as build targets."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            runner.invoke(main, ["init"])
+            Path("test.md").write_text("---\npublic: true\n---\n# Test")
+
+            # Create output so next status is "unchanged" without force.
+            runner.invoke(main, ["build"])
+
+            result = runner.invoke(main, ["build", "--dry-run", "--force"])
+
+            assert result.exit_code == 0
+            assert "Would build (1):" in result.output
+            assert "+ test (forced)" in result.output
+
+    def test_dry_run_rejects_serve_flag(self):
+        """--serve is incompatible with --dry-run."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            runner.invoke(main, ["init"])
+            Path("test.md").write_text("---\npublic: true\n---\n# Test")
+
+            result = runner.invoke(main, ["build", "--dry-run", "--serve"])
+
+            assert result.exit_code == 1
+            assert "--serve cannot be used with --dry-run" in result.output
+
 
 class TestCleanCommand:
     """Tests for the clean command."""
