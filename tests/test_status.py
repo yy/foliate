@@ -9,6 +9,32 @@ from foliate.status import (
 )
 
 
+def _git_init_and_commit(path, message="deploy"):
+    """Initialize a git repo and make a commit with all files."""
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=path, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=path,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"],
+        cwd=path,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(["git", "add", "-A"], cwd=path, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", message, "--allow-empty"],
+        cwd=path,
+        capture_output=True,
+        check=True,
+    )
+
+
 def _make_vault_with_deploy(
     tmp_path, pages: dict[str, dict], deploy_pages: dict[str, str] | None = None
 ) -> Config:
@@ -42,16 +68,29 @@ target = "{deploy_path}"
 """
     )
 
+    import os
+    import time
+
     for rel_path, info in pages.items():
         md_file = vault_path / rel_path
         md_file.parent.mkdir(parents=True, exist_ok=True)
         md_file.write_text(info["content"])
+
+    # Set source file mtimes to 2 seconds in the past so they are clearly
+    # older than the deploy commit (git timestamps are whole seconds).
+    past = time.time() - 2
+    for rel_path in pages:
+        md_file = vault_path / rel_path
+        os.utime(md_file, (past, past))
 
     if deploy_pages:
         for rel_path, content in deploy_pages.items():
             out_file = deploy_path / rel_path
             out_file.parent.mkdir(parents=True, exist_ok=True)
             out_file.write_text(content)
+
+    # Initialize deploy dir as a git repo with a commit
+    _git_init_and_commit(deploy_path)
 
     return Config.load(config_path)
 
@@ -257,8 +296,8 @@ home_redirect = "about"
         assert len(report.private_pages) == 1
         assert len(report.new_pages) == 2
 
-    def test_global_config_change_marks_pages_modified(self, tmp_path):
-        """Config mtime changes should mark existing pages as modified."""
+    def test_global_config_change_does_not_affect_status(self, tmp_path):
+        """Config-only changes don't mark pages as modified (source unchanged)."""
         import os
         import time
 
@@ -281,11 +320,11 @@ home_redirect = "about"
         os.utime(config.config_path, (future, future))
 
         report = scan_status(config)
-        assert report.public_pages[0].state == "modified"
-        assert len(report.modified_pages) == 1
+        assert report.public_pages[0].state == "unchanged"
+        assert len(report.unchanged_pages) == 1
 
-    def test_incremental_disabled_marks_existing_pages_modified(self, tmp_path):
-        """With incremental=false, existing pages should be reported as rebuilt."""
+    def test_incremental_disabled_does_not_affect_status(self, tmp_path):
+        """With incremental=false, status uses mtime comparison not cache."""
         from foliate.build import build
 
         vault_path = tmp_path / "vault"
@@ -312,8 +351,8 @@ incremental = false
         build(config=config, force_rebuild=True)
 
         report = scan_status(config)
-        assert report.public_pages[0].state == "modified"
-        assert len(report.modified_pages) == 1
+        assert report.public_pages[0].state == "unchanged"
+        assert len(report.unchanged_pages) == 1
 
     def test_private_published_page_not_counted_as_published(self, tmp_path):
         """Private pages should never count toward published totals."""
@@ -559,9 +598,10 @@ class TestDeployTargetComparison:
         assert report.deploy_target is not None
 
     def test_page_already_deployed_is_unchanged(self, tmp_path):
-        """Public page that exists in deploy target shows as 'unchanged'."""
-        from foliate.build import build
+        """Public page that exists in deploy target shows as 'unchanged'.
 
+        Source was created before the deploy commit, so source mtime < commit time.
+        """
         config = _make_vault_with_deploy(
             tmp_path,
             pages={
@@ -573,26 +613,16 @@ class TestDeployTargetComparison:
                 "wiki/test/index.html": "<html>old</html>",
             },
         )
-        # Build so that build output exists
-        build(config=config, force_rebuild=True)
-
-        # Copy build output to deploy target (simulate a deploy via rsync -a)
-        import shutil
-
-        build_dir = config.get_build_dir()
-        deploy_dir = tmp_path / "deploy"
-        shutil.copytree(build_dir, deploy_dir, dirs_exist_ok=True)
-
+        # _make_vault_with_deploy creates source files first, then makes a git
+        # commit in the deploy dir. So source mtime < last deploy commit time.
         report = scan_status(config)
         assert len(report.unchanged_pages) == 1
         assert report.unchanged_pages[0].state == "unchanged"
 
-    def test_modified_page_build_newer_than_deploy(self, tmp_path):
-        """Page rebuilt after deploy shows as 'modified'."""
+    def test_modified_page_source_newer_than_deploy(self, tmp_path):
+        """Page with source newer than last deploy commit shows as 'modified'."""
         import os
         import time
-
-        from foliate.build import build
 
         config = _make_vault_with_deploy(
             tmp_path,
@@ -605,13 +635,10 @@ class TestDeployTargetComparison:
                 "wiki/test/index.html": "<html>old</html>",
             },
         )
-        # Build the page
-        build(config=config, force_rebuild=True)
-
-        # Set deploy file mtime to the past (simulating an older deploy)
-        deploy_file = tmp_path / "deploy" / "wiki" / "test" / "index.html"
-        past = time.time() - 100
-        os.utime(deploy_file, (past, past))
+        # Touch source file to be clearly in the future (after deploy commit)
+        md_file = config.vault_path / "test.md"
+        future = time.time() + 2
+        os.utime(md_file, (future, future))
 
         report = scan_status(config)
         assert len(report.modified_pages) == 1
@@ -633,10 +660,6 @@ class TestDeployTargetComparison:
 
     def test_no_changes_message(self, tmp_path):
         """When everything is deployed, show 'no new or modified' message."""
-        import shutil
-
-        from foliate.build import build
-
         config = _make_vault_with_deploy(
             tmp_path,
             pages={
@@ -644,14 +667,11 @@ class TestDeployTargetComparison:
                     "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
                 },
             },
+            deploy_pages={
+                "wiki/test/index.html": "<html>deployed</html>",
+            },
         )
-        build(config=config, force_rebuild=True)
-
-        # Copy build to deploy (simulate deploy)
-        build_dir = config.get_build_dir()
-        deploy_dir = tmp_path / "deploy"
-        shutil.copytree(build_dir, deploy_dir, dirs_exist_ok=True)
-
+        # Source was created before deploy commit → unchanged
         report = scan_status(config)
         output = format_status_report(report)
         assert "No new or modified pages." in output

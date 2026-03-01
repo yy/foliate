@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .build import get_content_info, get_output_path, is_path_ignored
-from .cache import BUILD_CACHE_FILE, check_global_deps_changed, load_build_cache
 from .config import Config
 from .markdown_utils import parse_markdown_file
 
@@ -75,15 +74,32 @@ def _resolve_deploy_dir(config: Config) -> Path | None:
     return None
 
 
+def _get_last_deploy_time(deploy_dir: Path) -> float:
+    """Get the timestamp of the last git commit in the deploy directory."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%ct"],
+            cwd=deploy_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except (OSError, ValueError):
+        pass
+    return 0.0
+
+
 def _get_page_state(
     md_file: Path,
     page_path: str,
     base_url: str,
     build_dir: Path,
     wiki_dir_name: str,
-    build_cache: dict,
-    force_rebuild_all: bool,
     deploy_dir: Path | None = None,
+    last_deploy_time: float = 0.0,
 ) -> str:
     """Determine whether a page is new, modified, or unchanged.
 
@@ -95,42 +111,20 @@ def _get_page_state(
         "new", "modified", or "unchanged"
     """
     if deploy_dir is not None:
-        # Compare against deploy target
         deploy_file = get_output_path(deploy_dir, page_path, base_url, wiki_dir_name)
         if not deploy_file.exists():
             return "new"
-
-        # Page exists in deploy target — check if build output is newer
-        build_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
-        if build_file.exists():
-            if build_file.stat().st_mtime > deploy_file.stat().st_mtime:
-                return "modified"
-            return "unchanged"
-
-        # No build output — check source vs build cache
-        cache_key = str(md_file)
-        md_mtime = md_file.stat().st_mtime
-        if cache_key in build_cache and build_cache[cache_key] >= md_mtime:
-            return "unchanged"
-        return "modified"
+        if md_file.stat().st_mtime > last_deploy_time:
+            return "modified"
+        return "unchanged"
 
     # Fallback: compare against build directory
     output_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
-
     if not output_file.exists():
         return "new"
-
-    # A global invalidation means existing pages will still rebuild.
-    if force_rebuild_all:
+    if md_file.stat().st_mtime > output_file.stat().st_mtime:
         return "modified"
-
-    # Check cache for modification
-    cache_key = str(md_file)
-    md_mtime = md_file.stat().st_mtime
-    if cache_key in build_cache and build_cache[cache_key] >= md_mtime:
-        return "unchanged"
-
-    return "modified"
+    return "unchanged"
 
 
 def scan_status(config: Config) -> StatusReport:
@@ -152,18 +146,8 @@ def scan_status(config: Config) -> StatusReport:
     wiki_dir_name = config.build.wiki_prefix.strip("/")
 
     build_dir = config.get_build_dir()
-    cache_file = config.get_cache_dir() / BUILD_CACHE_FILE
-    build_cache = load_build_cache(cache_file)
-    force_rebuild_all = not config.build.incremental
-    if (
-        not force_rebuild_all
-        and config.config_path
-        and check_global_deps_changed(build_cache, config.config_path, vault_path)
-    ):
-        force_rebuild_all = True
-        build_cache = {}
-
     deploy_dir = _resolve_deploy_dir(config)
+    last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else 0.0
 
     pages: list[PageStatus] = []
 
@@ -201,9 +185,8 @@ def scan_status(config: Config) -> StatusReport:
                 content_base_url,
                 build_dir,
                 wiki_dir_name,
-                build_cache,
-                force_rebuild_all,
                 deploy_dir=deploy_dir,
+                last_deploy_time=last_deploy_time,
             )
         else:
             state = "unchanged"  # not relevant for private pages
