@@ -191,6 +191,26 @@ def doctor():
 
 
 @main.command()
+@click.option("--verbose", "-v", is_flag=True, help="Show all pages including unchanged")
+def status(verbose: bool):
+    """Show which pages would be built or deployed."""
+    from .logging import setup_logging
+    from .status import format_status_report, scan_status
+
+    setup_logging(verbose=False)
+
+    try:
+        config = Config.find_and_load()
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+    report = scan_status(config)
+    output = format_status_report(report, verbose=verbose)
+    click.echo(output)
+
+
+@main.command()
 @click.option(
     "--dry-run", "-n", is_flag=True, help="Show what would be done without executing"
 )
