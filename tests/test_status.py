@@ -64,7 +64,7 @@ url = "https://test.com"
 home_redirect = "about"
 
 [deploy]
-target = "{deploy_path}"
+target = "{deploy_path.as_posix()}"
 """
     )
 
