@@ -515,6 +515,140 @@ url = "https://example.com"
         assert sitemap_before == sitemap_after
 
 
+class TestStalePageRemoval:
+    """Tests for stale page cleanup during incremental builds."""
+
+    def _make_vault(self, tmp_path):
+        """Create a minimal vault with config."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "test"
+"""
+        )
+        return vault_path, config_path
+
+    def test_stale_html_removed_when_page_becomes_private(self, tmp_path):
+        """When a page changes from public to private, its HTML is removed."""
+        vault_path, config_path = self._make_vault(tmp_path)
+
+        # Create a public page
+        page = vault_path / "secret.md"
+        page.write_text("---\ntitle: Secret\npublic: true\n---\nSecret content.")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        output = vault_path / ".foliate" / "build" / "wiki" / "secret" / "index.html"
+        assert output.exists()
+
+        # Make the page private and rebuild incrementally
+        page.write_text("---\ntitle: Secret\npublic: false\n---\nSecret content.")
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=False, incremental=True)
+
+        assert not output.exists()
+
+    def test_stale_html_removed_when_page_deleted(self, tmp_path):
+        """When a source file is deleted, its HTML is removed."""
+        vault_path, config_path = self._make_vault(tmp_path)
+
+        page = vault_path / "temp.md"
+        page.write_text("---\ntitle: Temp\npublic: true\n---\nTemp content.")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        output = vault_path / ".foliate" / "build" / "wiki" / "temp" / "index.html"
+        assert output.exists()
+
+        # Delete the source file and rebuild
+        page.unlink()
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=False, incremental=True)
+
+        assert not output.exists()
+
+    def test_stale_cleanup_removes_empty_directories(self, tmp_path):
+        """Parent directories are cleaned up when they become empty."""
+        vault_path, config_path = self._make_vault(tmp_path)
+
+        subdir = vault_path / "Notes"
+        subdir.mkdir()
+        page = subdir / "draft.md"
+        page.write_text("---\ntitle: Draft\npublic: true\n---\nDraft content.")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        output_dir = vault_path / ".foliate" / "build" / "wiki" / "Notes" / "draft"
+        assert output_dir.exists()
+
+        # Delete the source and rebuild
+        page.unlink()
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=False, incremental=True)
+
+        # Both the page dir and the Notes dir under wiki should be gone
+        assert not output_dir.exists()
+        assert not (vault_path / ".foliate" / "build" / "wiki" / "Notes").exists()
+
+    def test_no_stale_cleanup_on_force_rebuild(self, tmp_path):
+        """Force rebuild wipes the build dir, so stale cleanup is not needed."""
+        vault_path, config_path = self._make_vault(tmp_path)
+
+        page = vault_path / "gone.md"
+        page.write_text("---\ntitle: Gone\npublic: true\n---\nGone content.")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        output = vault_path / ".foliate" / "build" / "wiki" / "gone" / "index.html"
+        assert output.exists()
+
+        # Delete source and force rebuild — the build dir is wiped entirely
+        page.unlink()
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        assert not output.exists()
+
+    def test_no_stale_cleanup_on_single_page_build(self, tmp_path):
+        """Single-page build should not remove other pages."""
+        vault_path, config_path = self._make_vault(tmp_path)
+
+        page_a = vault_path / "alpha.md"
+        page_a.write_text("---\ntitle: Alpha\npublic: true\n---\nAlpha")
+
+        page_b = vault_path / "beta.md"
+        page_b.write_text("---\ntitle: Beta\npublic: true\n---\nBeta")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        output_b = vault_path / ".foliate" / "build" / "wiki" / "beta" / "index.html"
+        assert output_b.exists()
+
+        # Delete beta's source, but do a single-page build of alpha only
+        page_b.unlink()
+        config = Config.load(config_path)
+        build.build(
+            config=config, force_rebuild=False, incremental=True, single_page="alpha"
+        )
+
+        # Beta's output should still be there (single_page build doesn't clean stale)
+        assert output_b.exists()
+
+
 class TestBuildStats:
     """Tests for build statistics reporting."""
 

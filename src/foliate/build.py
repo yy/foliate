@@ -329,6 +329,59 @@ def process_markdown_files(
     return public_pages, published_pages, new_build_cache, stats
 
 
+def remove_stale_pages(
+    build_dir: Path,
+    vault_path: Path,
+    old_cache: dict,
+    new_cache: dict,
+    config: Config,
+) -> int:
+    """Remove HTML files for pages that are no longer public or were deleted.
+
+    Returns number of stale pages removed.
+    """
+    from .logging import debug
+
+    special_keys = {"__config_mtime__", "__templates_mtime__"}
+    old_sources = set(old_cache.keys()) - special_keys
+    new_sources = set(new_cache.keys()) - special_keys
+    stale_sources = old_sources - new_sources
+
+    if not stale_sources:
+        return 0
+
+    homepage_dir = config.build.homepage_dir
+    wiki_base_url = config.base_urls["wiki"]
+    wiki_dir_name = config.build.wiki_prefix.strip("/")
+    removed = 0
+
+    for source_path in stale_sources:
+        try:
+            rel_path = Path(source_path).relative_to(vault_path)
+        except ValueError:
+            continue
+        page_path = rel_path.with_suffix("").as_posix()
+        page_path, base_url, _ = get_content_info(
+            page_path, homepage_dir, wiki_base_url
+        )
+        output_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
+
+        if output_file.exists():
+            output_file.unlink()
+            debug(f"  Removed stale: {page_path}")
+            # Remove empty parent directories up to build_dir
+            page_dir = output_file.parent
+            while page_dir != build_dir:
+                if not any(page_dir.iterdir()):
+                    page_dir.rmdir()
+                    page_dir = page_dir.parent
+                else:
+                    break
+            removed += 1
+
+    return removed
+
+
 def render_home_page(
     public_pages: list[dict],
     published_pages: list[dict],
@@ -579,6 +632,14 @@ def build(
         incremental,
         single_page,
     )
+
+    # Remove stale pages (public→private or deleted)
+    if incremental and not force_rebuild and not single_page:
+        removed = remove_stale_pages(
+            build_dir, vault_path, build_cache, new_build_cache, config
+        )
+        if removed:
+            debug(f"  Removed {removed} stale page(s)")
 
     # Re-render Home page with recent pages
     if not single_page:
