@@ -201,6 +201,10 @@ make publish
 
 # Test CLI locally
 uv run foliate --help
+
+# Run against a vault (from the vault directory)
+# --project keeps cwd but uses foliate's venv; avoids uvx cache staleness
+uv run --project ~/git/foliate foliate status
 ```
 
 ## Releasing a New Version
