@@ -203,6 +203,80 @@ home_redirect = "about"
         assert len(report.private_pages) == 1
         assert len(report.new_pages) == 2
 
+    def test_global_config_change_marks_pages_modified(self, tmp_path):
+        """Config mtime changes should mark existing pages as modified."""
+        import time
+
+        from foliate.build import build
+
+        config = _make_vault(
+            tmp_path,
+            {
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+        )
+        build(config=config, force_rebuild=True)
+
+        # Ensure config mtime increases after cache snapshot.
+        time.sleep(0.05)
+        assert config.config_path is not None
+        config.config_path.write_text(config.config_path.read_text() + "\n# updated\n")
+
+        report = scan_status(config)
+        assert report.public_pages[0].state == "modified"
+        assert len(report.modified_pages) == 1
+
+    def test_incremental_disabled_marks_existing_pages_modified(self, tmp_path):
+        """With incremental=false, existing pages should be reported as rebuilt."""
+        from foliate.build import build
+
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "about"
+incremental = false
+"""
+        )
+        (vault_path / "test.md").write_text(
+            "---\ntitle: Test\npublic: true\n---\nHello.\n"
+        )
+
+        config = Config.load(config_path)
+        build(config=config, force_rebuild=True)
+
+        report = scan_status(config)
+        assert report.public_pages[0].state == "modified"
+        assert len(report.modified_pages) == 1
+
+    def test_private_published_page_not_counted_as_published(self, tmp_path):
+        """Private pages should never count toward published totals."""
+        config = _make_vault(
+            tmp_path,
+            {
+                "public.md": {
+                    "content": "---\ntitle: Public\npublic: true\npublished: true\n---\nPublic.\n",
+                },
+                "private.md": {
+                    "content": "---\ntitle: Private\npublished: true\n---\nPrivate.\n",
+                },
+            },
+        )
+        report = scan_status(config)
+        assert len(report.public_pages) == 1
+        assert len(report.published_pages) == 1
+        assert report.published_pages[0].page_path == "public"
+
 
 class TestPageStatus:
     """Tests for PageStatus dataclass."""
@@ -291,3 +365,13 @@ class TestFormatStatusReport:
         report = StatusReport(pages=pages)
         output = format_status_report(report)
         assert "[published]" in output
+
+    def test_summary_counts_only_public_published_pages(self):
+        """Summary should ignore private pages even if published=true."""
+        pages = [
+            PageStatus("public", None, "/wiki/", False, True, True, "new"),
+            PageStatus("private", None, "/wiki/", False, False, True, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+        output = format_status_report(report)
+        assert "1 published" in output

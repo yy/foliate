@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .build import get_content_info, is_path_ignored
-from .cache import BUILD_CACHE_FILE, load_build_cache
+from .cache import BUILD_CACHE_FILE, check_global_deps_changed, load_build_cache
 from .config import Config
 from .markdown_utils import parse_markdown_file
 
@@ -43,7 +43,7 @@ class StatusReport:
 
     @property
     def published_pages(self) -> list[PageStatus]:
-        return [p for p in self.pages if p.published]
+        return [p for p in self.pages if p.public and p.published]
 
     @property
     def private_pages(self) -> list[PageStatus]:
@@ -69,6 +69,7 @@ def _get_page_state(
     build_dir: Path,
     wiki_dir_name: str,
     build_cache: dict,
+    force_rebuild_all: bool,
 ) -> str:
     """Determine whether a page is new, modified, or unchanged.
 
@@ -83,6 +84,10 @@ def _get_page_state(
 
     if not output_file.exists():
         return "new"
+
+    # A global invalidation means existing pages will still rebuild.
+    if force_rebuild_all:
+        return "modified"
 
     # Check cache for modification
     cache_key = str(md_file)
@@ -114,6 +119,13 @@ def scan_status(config: Config) -> StatusReport:
     build_dir = config.get_build_dir()
     cache_file = config.get_cache_dir() / BUILD_CACHE_FILE
     build_cache = load_build_cache(cache_file)
+    force_rebuild_all = not config.build.incremental
+    if (
+        not force_rebuild_all
+        and config.config_path
+        and check_global_deps_changed(build_cache, config.config_path, vault_path)
+    ):
+        force_rebuild_all = True
 
     pages: list[PageStatus] = []
 
@@ -140,7 +152,13 @@ def scan_status(config: Config) -> StatusReport:
 
         if is_public:
             state = _get_page_state(
-                md_file, page_path, content_base_url, build_dir, wiki_dir_name, build_cache
+                md_file,
+                page_path,
+                content_base_url,
+                build_dir,
+                wiki_dir_name,
+                build_cache,
+                force_rebuild_all,
             )
         else:
             state = "unchanged"  # not relevant for private pages
