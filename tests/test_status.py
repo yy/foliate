@@ -1,5 +1,9 @@
 """Tests for foliate status module."""
 
+import os
+import subprocess
+import time
+
 from foliate.config import Config
 from foliate.status import (
     PageStatus,
@@ -8,30 +12,25 @@ from foliate.status import (
     scan_status,
 )
 
+_GIT_ENV = {
+    **os.environ,
+    "GIT_AUTHOR_NAME": "Test",
+    "GIT_AUTHOR_EMAIL": "test@test.com",
+    "GIT_COMMITTER_NAME": "Test",
+    "GIT_COMMITTER_EMAIL": "test@test.com",
+}
+
 
 def _git_init_and_commit(path, message="deploy"):
     """Initialize a git repo and make a commit with all files."""
-    import subprocess
-
     subprocess.run(["git", "init"], cwd=path, capture_output=True, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        cwd=path,
-        capture_output=True,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"],
-        cwd=path,
-        capture_output=True,
-        check=True,
-    )
     subprocess.run(["git", "add", "-A"], cwd=path, capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", message, "--allow-empty"],
         cwd=path,
         capture_output=True,
         check=True,
+        env=_GIT_ENV,
     )
 
 
@@ -67,9 +66,6 @@ home_redirect = "about"
 target = "{deploy_path.as_posix()}"
 """
     )
-
-    import os
-    import time
 
     for rel_path, info in pages.items():
         md_file = vault_path / rel_path
@@ -219,8 +215,6 @@ class TestScanStatus:
 
     def test_modified_after_edit(self, tmp_path):
         """Page shows as 'modified' when source is newer than cache."""
-        import os
-        import time
 
         from foliate.build import build
 
@@ -298,8 +292,6 @@ home_redirect = "about"
 
     def test_global_config_change_does_not_affect_status(self, tmp_path):
         """Config-only changes don't mark pages as modified (source unchanged)."""
-        import os
-        import time
 
         from foliate.build import build
 
@@ -621,8 +613,6 @@ class TestDeployTargetComparison:
 
     def test_modified_page_source_newer_than_deploy(self, tmp_path):
         """Page with source newer than last deploy commit shows as 'modified'."""
-        import os
-        import time
 
         config = _make_vault_with_deploy(
             tmp_path,

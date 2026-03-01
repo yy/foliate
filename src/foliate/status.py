@@ -4,6 +4,7 @@ Scans the vault and reports which pages would be built, deployed,
 and whether they are new, modified, or unchanged since the last build.
 """
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,8 +77,8 @@ def _resolve_deploy_dir(config: Config) -> Path | None:
 
 def _get_last_deploy_time(deploy_dir: Path) -> float:
     """Get the timestamp of the last git commit in the deploy directory."""
-    import subprocess
-
+    if not (deploy_dir / ".git").exists():
+        return 0.0
     try:
         result = subprocess.run(
             ["git", "log", "-1", "--format=%ct"],
