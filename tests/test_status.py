@@ -9,6 +9,53 @@ from foliate.status import (
 )
 
 
+def _make_vault_with_deploy(
+    tmp_path, pages: dict[str, dict], deploy_pages: dict[str, str] | None = None
+) -> Config:
+    """Create a vault with a deploy target and return a Config.
+
+    Args:
+        tmp_path: pytest tmp_path fixture
+        pages: dict mapping relative file paths to dicts with "content" key
+        deploy_pages: dict mapping output paths (e.g. "wiki/test/index.html")
+                      to HTML content in the deploy target
+    """
+    vault_path = tmp_path / "vault"
+    vault_path.mkdir()
+    deploy_path = tmp_path / "deploy"
+    deploy_path.mkdir()
+
+    foliate_dir = vault_path / ".foliate"
+    foliate_dir.mkdir()
+    config_path = foliate_dir / "config.toml"
+    config_path.write_text(
+        f"""
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "about"
+
+[deploy]
+target = "{deploy_path}"
+"""
+    )
+
+    for rel_path, info in pages.items():
+        md_file = vault_path / rel_path
+        md_file.parent.mkdir(parents=True, exist_ok=True)
+        md_file.write_text(info["content"])
+
+    if deploy_pages:
+        for rel_path, content in deploy_pages.items():
+            out_file = deploy_path / rel_path
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(content)
+
+    return Config.load(config_path)
+
+
 def _make_vault(tmp_path, pages: dict[str, dict]) -> Config:
     """Create a vault with pages and return a Config.
 
@@ -490,3 +537,152 @@ class TestFormatBuildDryRunReport:
         report = StatusReport(pages=[])
         output = format_build_dry_run_report(report)
         assert output.startswith("Dry run: no files will be written.")
+
+
+class TestDeployTargetComparison:
+    """Tests for status comparison against deploy target."""
+
+    def test_new_page_not_in_deploy_target(self, tmp_path):
+        """Public page not in deploy target shows as 'new'."""
+        config = _make_vault_with_deploy(
+            tmp_path,
+            pages={
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+            deploy_pages={},  # empty deploy target
+        )
+        report = scan_status(config)
+        assert len(report.new_pages) == 1
+        assert report.new_pages[0].state == "new"
+        assert report.deploy_target is not None
+
+    def test_page_already_deployed_is_unchanged(self, tmp_path):
+        """Public page that exists in deploy target shows as 'unchanged'."""
+        from foliate.build import build
+
+        config = _make_vault_with_deploy(
+            tmp_path,
+            pages={
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+            deploy_pages={
+                "wiki/test/index.html": "<html>old</html>",
+            },
+        )
+        # Build so that build output exists
+        build(config=config, force_rebuild=True)
+
+        # Copy build output to deploy target (simulate a deploy via rsync -a)
+        import shutil
+
+        build_dir = config.get_build_dir()
+        deploy_dir = tmp_path / "deploy"
+        shutil.copytree(build_dir, deploy_dir, dirs_exist_ok=True)
+
+        report = scan_status(config)
+        assert len(report.unchanged_pages) == 1
+        assert report.unchanged_pages[0].state == "unchanged"
+
+    def test_modified_page_build_newer_than_deploy(self, tmp_path):
+        """Page rebuilt after deploy shows as 'modified'."""
+        import os
+        import time
+
+        from foliate.build import build
+
+        config = _make_vault_with_deploy(
+            tmp_path,
+            pages={
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+            deploy_pages={
+                "wiki/test/index.html": "<html>old</html>",
+            },
+        )
+        # Build the page
+        build(config=config, force_rebuild=True)
+
+        # Set deploy file mtime to the past (simulating an older deploy)
+        deploy_file = tmp_path / "deploy" / "wiki" / "test" / "index.html"
+        past = time.time() - 100
+        os.utime(deploy_file, (past, past))
+
+        report = scan_status(config)
+        assert len(report.modified_pages) == 1
+        assert report.modified_pages[0].state == "modified"
+
+    def test_deploy_target_shown_in_report(self, tmp_path):
+        """Format report shows deploy target path."""
+        config = _make_vault_with_deploy(
+            tmp_path,
+            pages={
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+        )
+        report = scan_status(config)
+        output = format_status_report(report)
+        assert "Comparing against deploy target:" in output
+
+    def test_no_changes_message(self, tmp_path):
+        """When everything is deployed, show 'no new or modified' message."""
+        import shutil
+
+        from foliate.build import build
+
+        config = _make_vault_with_deploy(
+            tmp_path,
+            pages={
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+        )
+        build(config=config, force_rebuild=True)
+
+        # Copy build to deploy (simulate deploy)
+        build_dir = config.get_build_dir()
+        deploy_dir = tmp_path / "deploy"
+        shutil.copytree(build_dir, deploy_dir, dirs_exist_ok=True)
+
+        report = scan_status(config)
+        output = format_status_report(report)
+        assert "No new or modified pages." in output
+
+    def test_homepage_page_new_in_deploy(self, tmp_path):
+        """Homepage content not in deploy target shows as 'new'."""
+        config = _make_vault_with_deploy(
+            tmp_path,
+            pages={
+                "_homepage/about.md": {
+                    "content": "---\ntitle: About\npublic: true\n---\nAbout.\n",
+                },
+            },
+            deploy_pages={},
+        )
+        report = scan_status(config)
+        assert len(report.new_pages) == 1
+        assert report.new_pages[0].page_path == "about"
+        assert report.new_pages[0].is_homepage_content is True
+
+    def test_fallback_to_build_dir_without_deploy_target(self, tmp_path):
+        """Without deploy target, falls back to build-dir comparison."""
+        config = _make_vault(
+            tmp_path,
+            {
+                "test.md": {
+                    "content": "---\ntitle: Test\npublic: true\n---\nHello.\n",
+                },
+            },
+        )
+        report = scan_status(config)
+        assert report.deploy_target is None
+        # Without build output, should be "new" (build-dir comparison)
+        assert len(report.new_pages) == 1

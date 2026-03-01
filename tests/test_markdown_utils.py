@@ -258,3 +258,29 @@ class TestFixHomepageToWikiLinks:
         html = '<a href="#section">Jump</a>'
         result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="#section">Jump</a>'
+
+
+class TestStripBackticksInWikilinkTargets:
+    """Tests for backtick stripping in wikilink targets."""
+
+    def test_backticks_in_anchor_stripped(self):
+        """Backticks in heading anchors are stripped from target."""
+        result = markdown_utils.render_markdown("[[Page#`code` heading|display text]]")
+        assert 'href="/wiki/Page/#code heading"' in result
+        assert "display text" in result
+
+    def test_backticks_in_display_preserved(self):
+        """Backticks in display text render as inline code."""
+        result = markdown_utils.render_markdown("[[Page|check `config`]]")
+        assert 'href="/wiki/Page/"' in result
+        assert "<code>config</code>" in result
+
+    def test_no_backticks_unchanged(self):
+        """Wikilinks without backticks are not affected."""
+        result = markdown_utils.render_markdown("[[Page#heading|display]]")
+        assert 'href="/wiki/Page/#heading"' in result
+
+    def test_backticks_in_target_without_display(self):
+        """Backticks in target-only wikilink are stripped."""
+        result = markdown_utils.render_markdown("[[Page#`tmux` setup]]")
+        assert 'href="/wiki/Page/#tmux setup"' in result

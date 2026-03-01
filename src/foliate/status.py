@@ -36,6 +36,7 @@ class StatusReport:
     """Summary of all page statuses in the vault."""
 
     pages: list[PageStatus]
+    deploy_target: str | None = None  # path to deploy target, if comparing against it
 
     @property
     def public_pages(self) -> list[PageStatus]:
@@ -62,6 +63,18 @@ class StatusReport:
         return [p for p in self.pages if p.public and p.state == "unchanged"]
 
 
+def _resolve_deploy_dir(config: Config) -> Path | None:
+    """Resolve the deploy target directory, if configured and exists."""
+    if not config.deploy.target:
+        return None
+    target = Path(config.deploy.target)
+    if not target.is_absolute() and config.vault_path:
+        target = (config.vault_path / target).resolve()
+    if target.exists():
+        return target
+    return None
+
+
 def _get_page_state(
     md_file: Path,
     page_path: str,
@@ -70,13 +83,38 @@ def _get_page_state(
     wiki_dir_name: str,
     build_cache: dict,
     force_rebuild_all: bool,
+    deploy_dir: Path | None = None,
 ) -> str:
     """Determine whether a page is new, modified, or unchanged.
+
+    When deploy_dir is provided, compares against the deploy target to show
+    what would change on the next deployment. Otherwise, compares against
+    the local build directory.
 
     Returns:
         "new", "modified", or "unchanged"
     """
-    # Determine expected output file
+    if deploy_dir is not None:
+        # Compare against deploy target
+        deploy_file = get_output_path(deploy_dir, page_path, base_url, wiki_dir_name)
+        if not deploy_file.exists():
+            return "new"
+
+        # Page exists in deploy target — check if build output is newer
+        build_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
+        if build_file.exists():
+            if build_file.stat().st_mtime > deploy_file.stat().st_mtime:
+                return "modified"
+            return "unchanged"
+
+        # No build output — check source vs build cache
+        cache_key = str(md_file)
+        md_mtime = md_file.stat().st_mtime
+        if cache_key in build_cache and build_cache[cache_key] >= md_mtime:
+            return "unchanged"
+        return "modified"
+
+    # Fallback: compare against build directory
     output_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
 
     if not output_file.exists():
@@ -125,6 +163,8 @@ def scan_status(config: Config) -> StatusReport:
         force_rebuild_all = True
         build_cache = {}
 
+    deploy_dir = _resolve_deploy_dir(config)
+
     pages: list[PageStatus] = []
 
     # Glob .md files, and .qmd files if Quarto is enabled
@@ -163,6 +203,7 @@ def scan_status(config: Config) -> StatusReport:
                 wiki_dir_name,
                 build_cache,
                 force_rebuild_all,
+                deploy_dir=deploy_dir,
             )
         else:
             state = "unchanged"  # not relevant for private pages
@@ -179,7 +220,10 @@ def scan_status(config: Config) -> StatusReport:
             )
         )
 
-    return StatusReport(pages=pages)
+    return StatusReport(
+        pages=pages,
+        deploy_target=str(deploy_dir) if deploy_dir else None,
+    )
 
 
 def format_status_report(report: StatusReport, verbose: bool = False) -> str:
@@ -193,6 +237,10 @@ def format_status_report(report: StatusReport, verbose: bool = False) -> str:
         Formatted string for terminal output
     """
     lines: list[str] = []
+
+    if report.deploy_target:
+        lines.append(f"Comparing against deploy target: {report.deploy_target}")
+        lines.append("")
 
     new = report.new_pages
     modified = report.modified_pages
@@ -211,6 +259,10 @@ def format_status_report(report: StatusReport, verbose: bool = False) -> str:
         for p in modified:
             pub = " [published]" if p.published else ""
             lines.append(f"  ~ {p.page_path}{pub}")
+        lines.append("")
+
+    if not new and not modified:
+        lines.append("No new or modified pages.")
         lines.append("")
 
     if verbose and unchanged:

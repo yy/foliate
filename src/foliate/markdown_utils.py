@@ -176,6 +176,26 @@ def get_markdown_converter(base_url: str) -> markdown.Markdown:
     )
 
 
+_WIKILINK_BACKTICK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+
+def _strip_backticks_in_wikilink_targets(content: str) -> str:
+    """Strip backticks from wikilink targets to prevent markdown code interference.
+
+    Markdown's inline code processor runs before the wikilink extension and
+    replaces backtick-wrapped text with placeholders, mangling the link target.
+    """
+
+    def _replace(match: re.Match) -> str:
+        inner = match.group(1)
+        if "|" in inner:
+            target, display = inner.split("|", 1)
+            return f"[[{target.replace('`', '')}|{display}]]"
+        return f"[[{inner.replace('`', '')}]]"
+
+    return _WIKILINK_BACKTICK_RE.sub(_replace, content)
+
+
 def render_markdown(content: str, base_url: str = "/wiki/") -> str:
     """Render markdown to HTML with extensions.
 
@@ -189,6 +209,7 @@ def render_markdown(content: str, base_url: str = "/wiki/") -> str:
     md = get_markdown_converter(base_url)
     md.reset()
 
+    content = _strip_backticks_in_wikilink_targets(content)
     html_content = md.convert(content)
 
     # Process asset paths to ensure they work with site structure

@@ -18,6 +18,9 @@ def extract_wiki_path(href: str, wiki_prefix: str = "wiki") -> str | None:
     if not href:
         return None
 
+    # Strip fragment (anchor) before extracting path
+    href = href.split("#", 1)[0]
+
     if wiki_prefix:
         prefix = f"/{wiki_prefix}/"
         if not href.startswith(prefix):

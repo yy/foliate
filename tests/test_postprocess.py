@@ -38,6 +38,15 @@ class TestExtractWikiPath:
     def test_extracts_path_with_empty_wiki_prefix(self):
         assert extract_wiki_path("/PageName/", "") == "PageName"
 
+    def test_strips_anchor_fragment(self):
+        assert extract_wiki_path("/wiki/Page/#heading", "wiki") == "Page"
+
+    def test_strips_anchor_with_spaces(self):
+        assert (
+            extract_wiki_path("/wiki/Claude Code/Tips/#tmux + Neovim Setup", "wiki")
+            == "Claude Code/Tips"
+        )
+
 
 class TestSanitizeWikilinks:
     """Tests for sanitize_wikilinks function."""
@@ -64,6 +73,16 @@ class TestSanitizeWikilinks:
         assert modified is False
         assert count == 0
         assert 'href="/wiki/PublicPage/"' in result
+
+    def test_keeps_public_link_with_anchor(self):
+        html = '<p><a href="/wiki/Claude Code/Tips/#tmux + Neovim Setup" class="wikilink">tmux + Neovim setup</a></p>'
+        public_pages = {"Claude Code/Tips"}
+
+        result, modified, count, _ = sanitize_wikilinks(html, public_pages)
+
+        assert modified is False
+        assert count == 0
+        assert 'href="/wiki/Claude Code/Tips/#tmux + Neovim Setup"' in result
         assert "wikilink" in result
 
     def test_removes_multiple_private_links(self):
@@ -141,7 +160,10 @@ class TestSanitizeWikilinks:
 
         assert modified is True
         assert count == 0
-        assert '<a class="wikilink" href="/wiki/Traffic evaporation/" rel="nofollow">' in result
+        assert (
+            '<a class="wikilink" href="/wiki/Traffic evaporation/" rel="nofollow">'
+            in result
+        )
         assert "wikilink-private" not in result
 
     def test_removes_private_link_with_empty_wiki_prefix(self):
