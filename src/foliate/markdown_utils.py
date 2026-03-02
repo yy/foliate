@@ -1,7 +1,6 @@
 """Markdown processing utilities for foliate."""
 
 import re
-from functools import lru_cache
 from pathlib import Path
 
 import frontmatter
@@ -160,9 +159,12 @@ def parse_markdown_file(filepath: Path) -> tuple[dict, str]:
         return {}, ""
 
 
-@lru_cache(maxsize=8)
 def get_markdown_converter(base_url: str) -> markdown.Markdown:
-    """Get or create a cached Markdown converter for the given base_url."""
+    """Create a Markdown converter for the given base_url.
+
+    A fresh instance is created each call to avoid sharing mutable state
+    across threads (watch mode runs rebuilds in Timer threads).
+    """
 
     extension_configs = {k: v.copy() for k, v in EXTENSION_CONFIGS.items()}
     extension_configs["mdx_wikilink_plus"] = extension_configs[
@@ -207,8 +209,6 @@ def render_markdown(content: str, base_url: str = "/wiki/") -> str:
         HTML string
     """
     md = get_markdown_converter(base_url)
-    md.reset()
-
     content = _strip_backticks_in_wikilink_targets(content)
     html_content = md.convert(content)
 
