@@ -75,10 +75,11 @@ def _resolve_deploy_dir(config: Config) -> Path | None:
     return None
 
 
-def _get_last_deploy_time(deploy_dir: Path) -> float:
-    """Get the timestamp of the last git commit in the deploy directory."""
-    if not (deploy_dir / ".git").exists():
-        return 0.0
+def _get_last_deploy_time(deploy_dir: Path) -> float | None:
+    """Get the timestamp of the last git commit in the deploy directory.
+
+    Returns None when git metadata is unavailable (e.g., non-git deploy target).
+    """
     try:
         result = subprocess.run(
             ["git", "log", "-1", "--format=%ct"],
@@ -90,7 +91,7 @@ def _get_last_deploy_time(deploy_dir: Path) -> float:
             return float(result.stdout.strip())
     except (OSError, ValueError):
         pass
-    return 0.0
+    return None
 
 
 def _get_page_state(
@@ -100,7 +101,7 @@ def _get_page_state(
     build_dir: Path,
     wiki_dir_name: str,
     deploy_dir: Path | None = None,
-    last_deploy_time: float = 0.0,
+    last_deploy_time: float | None = None,
 ) -> str:
     """Determine whether a page is new, modified, or unchanged.
 
@@ -115,7 +116,15 @@ def _get_page_state(
         deploy_file = get_output_path(deploy_dir, page_path, base_url, wiki_dir_name)
         if not deploy_file.exists():
             return "new"
-        if md_file.stat().st_mtime > last_deploy_time:
+
+        source_mtime = md_file.stat().st_mtime
+        if last_deploy_time is not None:
+            baseline = last_deploy_time
+        else:
+            # Deploy target may exist without git history; compare file mtimes.
+            baseline = deploy_file.stat().st_mtime
+
+        if source_mtime > baseline:
             return "modified"
         return "unchanged"
 
@@ -148,7 +157,7 @@ def scan_status(config: Config) -> StatusReport:
 
     build_dir = config.get_build_dir()
     deploy_dir = _resolve_deploy_dir(config)
-    last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else 0.0
+    last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else None
 
     pages: list[PageStatus] = []
 

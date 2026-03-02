@@ -696,3 +696,45 @@ class TestDeployTargetComparison:
         assert report.deploy_target is None
         # Without build output, should be "new" (build-dir comparison)
         assert len(report.new_pages) == 1
+
+    def test_non_git_deploy_target_uses_file_mtime_fallback(self, tmp_path):
+        """Non-git deploy target compares source mtime against deployed file mtime."""
+        import os
+
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+        deploy_path = tmp_path / "deploy"
+        deploy_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            f"""
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "about"
+
+[deploy]
+target = "{deploy_path.as_posix()}"
+"""
+        )
+
+        md_file = vault_path / "test.md"
+        md_file.write_text("---\ntitle: Test\npublic: true\n---\nHello.\n")
+        deploy_file = deploy_path / "wiki" / "test" / "index.html"
+        deploy_file.parent.mkdir(parents=True, exist_ok=True)
+        deploy_file.write_text("<html>deployed</html>")
+
+        # Simulate source older than deployed output.
+        older = deploy_file.stat().st_mtime - 10
+        os.utime(md_file, (older, older))
+
+        config = Config.load(config_path)
+        report = scan_status(config)
+
+        assert len(report.unchanged_pages) == 1
+        assert report.unchanged_pages[0].state == "unchanged"
