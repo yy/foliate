@@ -4,13 +4,18 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from bs4 import BeautifulSoup
 
 # Re-export FeedConfig from config for convenience
 from .config import FeedConfig
 from .markdown_utils import render_markdown
+
+if TYPE_CHECKING:
+    from jinja2 import Environment
+
+    from .config import Config
 
 __all__ = ["FeedConfig", "FeedItem", "generate_feed"]
 
