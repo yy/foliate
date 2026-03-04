@@ -254,10 +254,15 @@ def fix_homepage_to_wiki_links(html_content: str) -> str:
             return False
         return True
 
-    def replace_link(match):
-        link_path = match.group(1)
+    def replace_link(match: re.Match[str]) -> str:
+        link_path = match.group("double_quoted_path") or match.group("single_quoted_path")
+        quote = '"' if match.group("double_quoted_path") else "'"
         if should_be_wiki_link(link_path):
-            return f'href="/wiki{link_path}"'
+            return f"href={quote}/wiki{link_path}{quote}"
         return match.group(0)
 
-    return re.sub(r'href="(/[^"]*?)"', replace_link, html_content)
+    return re.sub(
+        r"""href="(?P<double_quoted_path>/[^"]*?)"|href='(?P<single_quoted_path>/[^']*?)'""",
+        replace_link,
+        html_content,
+    )

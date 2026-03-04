@@ -259,6 +259,18 @@ class TestFixHomepageToWikiLinks:
         result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="#section">Jump</a>'
 
+    def test_converts_wiki_links_single_quotes(self):
+        """Converts internal links with single-quoted href attributes."""
+        html = "<a href='/Notes/Ideas/'>Notes</a>"
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
+        assert result == "<a href='/wiki/Notes/Ideas/'>Notes</a>"
+
+    def test_converts_wiki_links_with_apostrophe(self):
+        """Converts internal links containing apostrophes in path."""
+        html = '<a href="/John\'s-Note/">Note</a>'
+        result = markdown_utils.fix_homepage_to_wiki_links(html)
+        assert result == '<a href="/wiki/John\'s-Note/">Note</a>'
+
 
 class TestStripBackticksInWikilinkTargets:
     """Tests for backtick stripping in wikilink targets."""
