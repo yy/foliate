@@ -355,6 +355,28 @@ This should not be built.
             vault_path / ".foliate" / "build" / "wiki" / "secret" / "index.html"
         ).exists()
 
+    def test_build_ignores_foliate_internal_markdown(self, tmp_path):
+        """Markdown files under .foliate/ are never built as site pages."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[site]\nname = 'Test'")
+
+        (vault_path / "public.md").write_text("---\npublic: true\n---\nPublic page")
+        (foliate_dir / "notes.md").write_text("---\npublic: true\n---\nInternal note")
+
+        config = Config.load(config_path)
+        result = build.build(config=config, force_rebuild=True)
+
+        assert result == 1
+        assert (vault_path / ".foliate" / "build" / "wiki" / "public" / "index.html").exists()
+        assert not (
+            vault_path / ".foliate" / "build" / "wiki" / ".foliate" / "notes" / "index.html"
+        ).exists()
+
     def test_wiki_root_redirect(self, tmp_path):
         """Wiki root (/wiki/) redirects to home page."""
         vault_path = tmp_path / "vault"

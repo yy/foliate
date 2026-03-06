@@ -202,6 +202,9 @@ def iter_public_md_files(
             continue
 
         rel_path = md_file.relative_to(vault_path)
+        # Never treat .foliate internals as content pages.
+        if rel_path.parts and rel_path.parts[0] == ".foliate":
+            continue
         page_path = rel_path.with_suffix("").as_posix()
 
         page_path, content_base_url, _ = get_content_info(
