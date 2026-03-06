@@ -88,25 +88,6 @@ def get_output_path(
     return build_dir / wiki_dir_name / page_path / "index.html"
 
 
-def create_page_object(
-    page_path: str,
-    meta: Frontmatter,
-    markdown_content: str,
-    render_html: bool = True,
-    file_path: Path | None = None,
-    base_url: str = "/wiki/",
-) -> Page:
-    """Create a page object with all necessary fields."""
-    return Page.from_markdown(
-        page_path,
-        meta,
-        markdown_content,
-        render_html=render_html,
-        file_path=file_path,
-        base_url=base_url,
-    )
-
-
 def render_page_to_file(
     page: Page,
     build_dir: Path,
@@ -236,7 +217,7 @@ def process_single_md_file(
         md_file, output_file, build_cache, force_rebuild
     ):
         debug(f"  Cached: {page_path}")
-        page = create_page_object(
+        page = Page.from_markdown(
             page_path,
             meta,
             markdown_content,
@@ -248,7 +229,7 @@ def process_single_md_file(
 
     # Rebuild
     debug(f"  Building: {page_path}")
-    page = create_page_object(
+    page = Page.from_markdown(
         page_path,
         meta,
         markdown_content,
@@ -296,7 +277,7 @@ def process_markdown_files(
             incremental,
         )
 
-        new_build_cache[str(md_file)] = md_file.stat().st_mtime
+        new_build_cache[str(md_file)] = page.file_mtime or md_file.stat().st_mtime
         public_pages.append(page)
 
         if was_rebuilt:

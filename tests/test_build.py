@@ -4,6 +4,7 @@ from jinja2 import Environment
 
 from foliate import build
 from foliate.config import Config
+from foliate.page import Page
 from foliate.templates import get_template_loader
 
 
@@ -52,14 +53,14 @@ class TestGetContentInfo:
 
 
 class TestCreatePageObject:
-    """Tests for create_page_object() function."""
+    """Tests for Page.from_markdown() function."""
 
     def test_creates_basic_page(self):
         """Creates page object with required fields."""
         meta = {"title": "Test Page", "public": True}
         content = "# Test\n\nSome content here."
 
-        page = build.create_page_object("test", meta, content, render_html=False)
+        page = Page.from_markdown("test", meta, content, render_html=False)
 
         assert page.path == "test"
         assert page.title == "Test Page"
@@ -69,7 +70,7 @@ class TestCreatePageObject:
     def test_uses_path_as_default_title(self):
         """Uses path as title when not in meta."""
         meta = {"public": True}
-        page = build.create_page_object("my-page", meta, "content", render_html=False)
+        page = Page.from_markdown("my-page", meta, "content", render_html=False)
 
         assert page.title == "my-page"
 
@@ -81,7 +82,7 @@ class TestCreatePageObject:
             "description for the page."
         )
 
-        page = build.create_page_object("test", meta, content, render_html=False)
+        page = Page.from_markdown("test", meta, content, render_html=False)
 
         assert page.description != ""
         assert "paragraph" in page.description
@@ -91,7 +92,7 @@ class TestCreatePageObject:
         meta = {"public": True, "description": "Custom description"}
         content = "Different content here."
 
-        page = build.create_page_object("test", meta, content, render_html=False)
+        page = Page.from_markdown("test", meta, content, render_html=False)
 
         assert page.description == "Custom description"
 
@@ -100,7 +101,7 @@ class TestCreatePageObject:
         meta = {"public": True}
         content = "![alt](image.png)"
 
-        page = build.create_page_object("test", meta, content, render_html=False)
+        page = Page.from_markdown("test", meta, content, render_html=False)
 
         assert page.image == "/assets/image.png"
 
@@ -109,13 +110,13 @@ class TestCreatePageObject:
         meta = {"public": True, "image": "/custom/image.png"}
         content = "![alt](other.png)"
 
-        page = build.create_page_object("test", meta, content, render_html=False)
+        page = Page.from_markdown("test", meta, content, render_html=False)
 
         assert page.image == "/custom/image.png"
 
     def test_custom_base_url(self):
         """Respects custom base_url."""
-        page = build.create_page_object(
+        page = Page.from_markdown(
             "about", {}, "content", render_html=False, base_url="/"
         )
 
@@ -126,7 +127,7 @@ class TestCreatePageObject:
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
 
-        page = build.create_page_object(
+        page = Page.from_markdown(
             "test", {}, "content", render_html=False, file_path=md_file
         )
 

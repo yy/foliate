@@ -137,21 +137,22 @@ def _require_section_dict(
     return section_data
 
 
+def _default_nav_items() -> list["NavItem"]:
+    return [
+        NavItem(url="/about/", label="About"),
+        NavItem(url="/wiki/Home/", label="Wiki"),
+    ]
+
+
 def _load_nav_items(data: dict[str, object], config_path: Path) -> list["NavItem"]:
     """Load and validate nav items."""
     nav_data = _require_section_dict(data, "nav", config_path)
     if nav_data is None:
-        return [
-            NavItem(url="/about/", label="About"),
-            NavItem(url="/wiki/Home/", label="Wiki"),
-        ]
+        return _default_nav_items()
 
     items = nav_data.get("items")
     if items is None:
-        return [
-            NavItem(url="/about/", label="About"),
-            NavItem(url="/wiki/Home/", label="Wiki"),
-        ]
+        return _default_nav_items()
     if not isinstance(items, list):
         raise TypeError(
             f"Config section [nav].items in {config_path} must be a list, "

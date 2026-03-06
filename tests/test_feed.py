@@ -9,8 +9,6 @@ from foliate.feed import (
     extract_summary,
     format_atom_date,
     generate_updates_digest,
-    get_modified_date,
-    get_published_date,
     parse_frontmatter_date,
 )
 from foliate.page import Page
@@ -222,53 +220,50 @@ class TestParseFrontmatterDate:
         assert parse_frontmatter_date(123) is None
 
 
-class TestGetPublishedDate:
-    """Tests for get_published_date function."""
+class TestPublishedAt:
+    """Tests for Page.published_at resolution."""
 
     def test_explicit_published_date(self):
         """Uses explicit published date field."""
         page = make_page("TestPage", meta={"published": "2024-03-15"})
-        result = get_published_date(page)
 
-        assert result.year == 2024
-        assert result.month == 3
-        assert result.day == 15
+        assert page.published_at is not None
+        assert page.published_at.year == 2024
+        assert page.published_at.month == 3
+        assert page.published_at.day == 15
 
     def test_date_field_fallback(self):
         """Falls back to date field if published is boolean."""
         page = make_page("TestPage", meta={"published": True, "date": "2024-03-10"})
-        result = get_published_date(page)
 
-        assert result.year == 2024
-        assert result.month == 3
-        assert result.day == 10
+        assert page.published_at is not None
+        assert page.published_at.year == 2024
+        assert page.published_at.month == 3
+        assert page.published_at.day == 10
 
     def test_file_mtime_fallback(self):
         """Falls back to file modification time."""
         page = make_page("TestPage", file_mtime=1710460800.0)
-        result = get_published_date(page)
 
-        assert result is not None
-        assert result.year == 2024
+        assert page.published_at is not None
+        assert page.published_at.year == 2024
 
     def test_returns_none_when_no_date(self):
         """Returns None if no date available."""
         page = make_page("TestPage")
-        result = get_published_date(page)
 
-        assert result is None
+        assert page.published_at is None
 
     def test_published_true_without_date_returns_none(self):
         """Page with published: true but no date field returns None."""
         page = make_page("TestPage", meta={"published": True})
-        result = get_published_date(page)
 
         # published: true alone is not sufficient - needs a resolvable date
-        assert result is None
+        assert page.published_at is None
 
 
-class TestGetModifiedDate:
-    """Tests for get_modified_date function."""
+class TestModifiedAt:
+    """Tests for Page.modified_at resolution."""
 
     def test_explicit_modified_field(self):
         """Uses explicit modified field."""
@@ -277,28 +272,27 @@ class TestGetModifiedDate:
             meta={"modified": "2024-03-20"},
             file_mtime=1710460800.0,
         )
-        result = get_modified_date(page)
 
-        assert result.year == 2024
-        assert result.month == 3
-        assert result.day == 20
+        assert page.modified_at is not None
+        assert page.modified_at.year == 2024
+        assert page.modified_at.month == 3
+        assert page.modified_at.day == 20
 
     def test_file_mtime_fallback(self):
         """Falls back to file modification time."""
         page = make_page("TestPage", file_mtime=1710460800.0)
-        result = get_modified_date(page)
 
-        assert result is not None
-        assert result.year == 2024
+        assert page.modified_at is not None
+        assert page.modified_at.year == 2024
 
     def test_returns_published_if_no_modified(self):
         """Falls back to published date if no modified date."""
         page = make_page("TestPage", meta={"published": "2024-03-15"})
-        result = get_modified_date(page)
 
-        assert result.year == 2024
-        assert result.month == 3
-        assert result.day == 15
+        assert page.modified_at is not None
+        assert page.modified_at.year == 2024
+        assert page.modified_at.month == 3
+        assert page.modified_at.day == 15
 
 
 class TestFormatAtomDate:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
 
@@ -31,29 +31,7 @@ class FeedItem:
     content: str
     published: datetime
     updated: datetime
-    summary: Optional[str] = None
-
-
-def get_published_date(page: Page) -> Optional[datetime]:
-    """Extract publication date from page.
-
-    Resolution order:
-        1. published field as date (not boolean True)
-        2. date field
-        3. file modification time (fallback)
-    """
-    return page.published_at
-
-
-def get_modified_date(page: Page) -> Optional[datetime]:
-    """Extract modification date from page.
-
-    Resolution order:
-        1. modified field in frontmatter
-        2. file modification time
-        3. published date (fallback)
-    """
-    return page.modified_at
+    summary: str | None = None
 
 
 def format_atom_date(dt: datetime) -> str:
@@ -71,7 +49,7 @@ def format_atom_date(dt: datetime) -> str:
 def classify_pages(
     pages: list[Page],
     window_days: int,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> tuple[list[Page], list[Page]]:
     """Classify pages into 'new' and 'updated' categories.
 
@@ -91,8 +69,8 @@ def classify_pages(
     updated_pages: list[Page] = []
 
     for page in pages:
-        published = get_published_date(page)
-        modified = get_modified_date(page)
+        published = page.published_at
+        modified = page.modified_at
 
         if published is None:
             continue
@@ -108,10 +86,8 @@ def classify_pages(
         # else: page is outside window entirely, skip
 
     # Sort by date descending, then by path ascending for deterministic order
-    new_pages.sort(key=lambda p: (-(get_published_date(p) or now).timestamp(), p.path))
-    updated_pages.sort(
-        key=lambda p: (-(get_modified_date(p) or now).timestamp(), p.path)
-    )
+    new_pages.sort(key=lambda p: (-(p.published_at or now).timestamp(), p.path))
+    updated_pages.sort(key=lambda p: (-(p.modified_at or now).timestamp(), p.path))
 
     return new_pages, updated_pages
 
@@ -166,8 +142,7 @@ def generate_updates_digest(pages: list[Page], site_url: str) -> str:
     for page in pages:
         title = escape(page.title)
         url = escape(f"{site_url}{page.url}", quote=True)
-        modified = get_modified_date(page)
-        date_str = modified.strftime("%Y-%m-%d") if modified else ""
+        date_str = page.modified_at.strftime("%Y-%m-%d") if page.modified_at else ""
 
         lines.append(f'  <li><a href="{url}">{title}</a> - {date_str}</li>')
 
@@ -195,11 +170,11 @@ def create_feed_items(
     items: list[FeedItem] = []
 
     for page in pages[:max_items]:
-        published = get_published_date(page)
+        published = page.published_at
 
         if not published:
             continue
-        modified = get_modified_date(page) or published
+        modified = page.modified_at or published
 
         url = f"{site_url}{page.url}"
         content = page.html
@@ -284,7 +259,7 @@ def generate_feed(
     updates_entry = None
     if updated_pages:
         digest_content = generate_updates_digest(updated_pages, site_url)
-        most_recent_update = get_modified_date(updated_pages[0])
+        most_recent_update = updated_pages[0].modified_at
         if most_recent_update is not None:
             updates_entry = {
                 "content": digest_content,
@@ -300,7 +275,7 @@ def generate_feed(
     if new_items:
         all_dates.extend(item.updated for item in new_items)
     if updates_entry and updated_pages:
-        updated_at = get_modified_date(updated_pages[0])
+        updated_at = updated_pages[0].modified_at
         if updated_at is not None:
             all_dates.append(updated_at)
     feed_updated = max(all_dates) if all_dates else now
