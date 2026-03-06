@@ -6,6 +6,8 @@ from pathlib import Path
 import frontmatter
 import markdown
 
+type ExtensionConfigMap = dict[str, dict[str, object]]
+
 # Markdown extensions configuration
 MARKDOWN_EXTENSIONS = [
     "codehilite",
@@ -19,7 +21,7 @@ MARKDOWN_EXTENSIONS = [
     "foliate.obsidian_image_size",
 ]
 
-EXTENSION_CONFIGS = {
+EXTENSION_CONFIGS: ExtensionConfigMap = {
     "markdown_katex": {
         "insert_fonts_css": True,
         "no_inline_svg": False,
@@ -139,7 +141,7 @@ def extract_first_image(markdown_content: str) -> str | None:
     return None
 
 
-def parse_markdown_file(filepath: Path) -> tuple[dict, str]:
+def parse_markdown_file(filepath: Path) -> tuple[dict[str, object], str]:
     """Parse a markdown file with YAML frontmatter.
 
     Args:
@@ -149,7 +151,7 @@ def parse_markdown_file(filepath: Path) -> tuple[dict, str]:
         Tuple of (metadata dict, markdown content string)
     """
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with filepath.open("r", encoding="utf-8") as f:
             post = frontmatter.load(f)
         return dict(post.metadata), post.content
     except Exception as e:
@@ -255,7 +257,9 @@ def fix_homepage_to_wiki_links(html_content: str) -> str:
         return True
 
     def replace_link(match: re.Match[str]) -> str:
-        link_path = match.group("double_quoted_path") or match.group("single_quoted_path")
+        link_path = match.group("double_quoted_path") or match.group(
+            "single_quoted_path"
+        )
         quote = '"' if match.group("double_quoted_path") else "'"
         if should_be_wiki_link(link_path):
             return f"href={quote}/wiki{link_path}{quote}"

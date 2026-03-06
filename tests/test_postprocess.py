@@ -3,6 +3,7 @@
 import tempfile
 from pathlib import Path
 
+from foliate.page import Page
 from foliate.postprocess import (
     extract_wiki_path,
     postprocess_links,
@@ -75,7 +76,10 @@ class TestSanitizeWikilinks:
         assert 'href="/wiki/PublicPage/"' in result
 
     def test_keeps_public_link_with_anchor(self):
-        html = '<p><a href="/wiki/Claude Code/Tips/#tmux + Neovim Setup" class="wikilink">tmux + Neovim setup</a></p>'
+        html = (
+            '<p><a href="/wiki/Claude Code/Tips/#tmux + Neovim Setup" '
+            'class="wikilink">tmux + Neovim setup</a></p>'
+        )
         public_pages = {"Claude Code/Tips"}
 
         result, modified, count, _ = sanitize_wikilinks(html, public_pages)
@@ -142,7 +146,10 @@ class TestSanitizeWikilinks:
         assert cleaned_dollars is False
 
     def test_preserves_inner_html_when_converting_to_span(self):
-        html = '<p><a href="/wiki/Private/" class="wikilink"><strong>Bold Private</strong></a></p>'
+        html = (
+            '<p><a href="/wiki/Private/" class="wikilink">'
+            "<strong>Bold Private</strong></a></p>"
+        )
         public_pages = set()
 
         result, modified, count, _ = sanitize_wikilinks(html, public_pages)
@@ -153,7 +160,10 @@ class TestSanitizeWikilinks:
         assert "<span" in result
 
     def test_restores_private_span_when_target_becomes_public(self):
-        html = '<p><span class="wikilink-private" data-wiki-path="Traffic evaporation">Traffic evaporation</span></p>'
+        html = (
+            '<p><span class="wikilink-private" '
+            'data-wiki-path="Traffic evaporation">Traffic evaporation</span></p>'
+        )
         public_pages = {"Traffic evaporation"}
 
         result, modified, count, _ = sanitize_wikilinks(html, public_pages)
@@ -227,7 +237,7 @@ class TestPostprocessLinks:
                 '<a href="/wiki/Private/" class="wikilink">Private Link</a>'
             )
 
-            public_pages = [{"path": "TestPage"}]
+            public_pages = [Page.from_markdown("TestPage", {}, "", render_html=False)]
 
             result = postprocess_links(config, public_pages)
 

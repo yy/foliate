@@ -13,6 +13,58 @@ from foliate.feed import (
     get_published_date,
     parse_frontmatter_date,
 )
+from foliate.page import Page
+
+
+def make_page(
+    path: str,
+    *,
+    meta: dict[str, object] | None = None,
+    title: str | None = None,
+    url: str | None = None,
+    html: str = "",
+    body: str = "",
+    base_url: str = "/wiki/",
+    file_mtime: float | None = None,
+) -> Page:
+    """Build a Page directly for test control without filesystem dependencies."""
+    page_meta = dict(meta or {})
+    if title is not None:
+        page_meta.setdefault("title", title)
+
+    resolved_title = title or str(page_meta.get("title", path))
+    resolved_url = url or f"{base_url}{path}/"
+
+    published = page_meta.get("published")
+    date_value = page_meta.get("date")
+    modified_value = page_meta.get("modified")
+
+    published_at = Page._resolve_published_at(published, date_value, file_mtime)
+    modified_at = Page._resolve_modified_at(modified_value, file_mtime, published_at)
+
+    file_modified = None
+    if file_mtime is not None:
+        file_modified = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d")
+
+    return Page(
+        path=path,
+        title=resolved_title,
+        meta=page_meta,
+        body=body,
+        html=html,
+        published=published,
+        date=date_value,
+        url=resolved_url,
+        base_url=base_url,
+        description="",
+        image=None,
+        tags=[],
+        file_modified=file_modified,
+        file_mtime=file_mtime,
+        is_published=bool(published),
+        published_at=published_at,
+        modified_at=modified_at,
+    )
 
 
 class TestFeedConfig:
@@ -175,7 +227,7 @@ class TestGetPublishedDate:
 
     def test_explicit_published_date(self):
         """Uses explicit published date field."""
-        page = {"meta": {"published": "2024-03-15"}}
+        page = make_page("TestPage", meta={"published": "2024-03-15"})
         result = get_published_date(page)
 
         assert result.year == 2024
@@ -184,7 +236,7 @@ class TestGetPublishedDate:
 
     def test_date_field_fallback(self):
         """Falls back to date field if published is boolean."""
-        page = {"meta": {"published": True, "date": "2024-03-10"}}
+        page = make_page("TestPage", meta={"published": True, "date": "2024-03-10"})
         result = get_published_date(page)
 
         assert result.year == 2024
@@ -193,7 +245,7 @@ class TestGetPublishedDate:
 
     def test_file_mtime_fallback(self):
         """Falls back to file modification time."""
-        page = {"meta": {}, "file_mtime": 1710460800.0}  # 2024-03-15 00:00:00 UTC
+        page = make_page("TestPage", file_mtime=1710460800.0)
         result = get_published_date(page)
 
         assert result is not None
@@ -201,14 +253,14 @@ class TestGetPublishedDate:
 
     def test_returns_none_when_no_date(self):
         """Returns None if no date available."""
-        page = {"meta": {}}
+        page = make_page("TestPage")
         result = get_published_date(page)
 
         assert result is None
 
     def test_published_true_without_date_returns_none(self):
         """Page with published: true but no date field returns None."""
-        page = {"meta": {"published": True}}
+        page = make_page("TestPage", meta={"published": True})
         result = get_published_date(page)
 
         # published: true alone is not sufficient - needs a resolvable date
@@ -220,7 +272,11 @@ class TestGetModifiedDate:
 
     def test_explicit_modified_field(self):
         """Uses explicit modified field."""
-        page = {"meta": {"modified": "2024-03-20"}, "file_mtime": 1710460800.0}
+        page = make_page(
+            "TestPage",
+            meta={"modified": "2024-03-20"},
+            file_mtime=1710460800.0,
+        )
         result = get_modified_date(page)
 
         assert result.year == 2024
@@ -229,7 +285,7 @@ class TestGetModifiedDate:
 
     def test_file_mtime_fallback(self):
         """Falls back to file modification time."""
-        page = {"meta": {}, "file_mtime": 1710460800.0}  # 2024-03-15 00:00:00 UTC
+        page = make_page("TestPage", file_mtime=1710460800.0)
         result = get_modified_date(page)
 
         assert result is not None
@@ -237,7 +293,7 @@ class TestGetModifiedDate:
 
     def test_returns_published_if_no_modified(self):
         """Falls back to published date if no modified date."""
-        page = {"meta": {"published": "2024-03-15"}}
+        page = make_page("TestPage", meta={"published": "2024-03-15"})
         result = get_modified_date(page)
 
         assert result.year == 2024
@@ -272,38 +328,38 @@ class TestClassifyPages:
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "NewPage",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "NewPage",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         new_pages, updated_pages = classify_pages(pages, window_days=30, now=now)
 
         assert len(new_pages) == 1
         assert len(updated_pages) == 0
-        assert new_pages[0]["path"] == "NewPage"
+        assert new_pages[0].path == "NewPage"
 
     def test_updated_page(self):
-        """Page with old publish date but recent modification is classified as updated."""
+        """Page with old publish date and recent modification becomes updated."""
         now = datetime.now(timezone.utc)
         old_date = (now - timedelta(days=60)).strftime("%Y-%m-%d")
         recent_mtime = (now - timedelta(days=5)).timestamp()
 
         pages = [
-            {
-                "path": "UpdatedPage",
-                "meta": {"published": old_date},
-                "file_mtime": recent_mtime,
-            }
+            make_page(
+                "UpdatedPage",
+                meta={"published": old_date},
+                file_mtime=recent_mtime,
+            )
         ]
 
         new_pages, updated_pages = classify_pages(pages, window_days=30, now=now)
 
         assert len(new_pages) == 0
         assert len(updated_pages) == 1
-        assert updated_pages[0]["path"] == "UpdatedPage"
+        assert updated_pages[0].path == "UpdatedPage"
 
     def test_page_outside_window(self):
         """Page with all dates older than window is excluded."""
@@ -312,11 +368,7 @@ class TestClassifyPages:
         old_mtime = (now - timedelta(days=60)).timestamp()
 
         pages = [
-            {
-                "path": "OldPage",
-                "meta": {"published": old_date},
-                "file_mtime": old_mtime,
-            }
+            make_page("OldPage", meta={"published": old_date}, file_mtime=old_mtime)
         ]
 
         new_pages, updated_pages = classify_pages(pages, window_days=30, now=now)
@@ -331,11 +383,11 @@ class TestClassifyPages:
         more_recent_mtime = (now - timedelta(days=2)).timestamp()
 
         pages = [
-            {
-                "path": "NewAndModified",
-                "meta": {"published": recent_date},
-                "file_mtime": more_recent_mtime,
-            }
+            make_page(
+                "NewAndModified",
+                meta={"published": recent_date},
+                file_mtime=more_recent_mtime,
+            )
         ]
 
         new_pages, updated_pages = classify_pages(pages, window_days=30, now=now)
@@ -351,26 +403,14 @@ class TestClassifyPages:
         date3 = (now - timedelta(days=2)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "Page1",
-                "meta": {"published": date1},
-                "file_mtime": now.timestamp(),
-            },
-            {
-                "path": "Page2",
-                "meta": {"published": date2},
-                "file_mtime": now.timestamp(),
-            },
-            {
-                "path": "Page3",
-                "meta": {"published": date3},
-                "file_mtime": now.timestamp(),
-            },
+            make_page("Page1", meta={"published": date1}, file_mtime=now.timestamp()),
+            make_page("Page2", meta={"published": date2}, file_mtime=now.timestamp()),
+            make_page("Page3", meta={"published": date3}, file_mtime=now.timestamp()),
         ]
 
         new_pages, _ = classify_pages(pages, window_days=30, now=now)
 
-        assert [p["path"] for p in new_pages] == ["Page3", "Page2", "Page1"]
+        assert [p.path for p in new_pages] == ["Page3", "Page2", "Page1"]
 
     def test_pages_with_same_date_sorted_by_path(self):
         """Pages with the same date are sorted deterministically by path."""
@@ -380,27 +420,21 @@ class TestClassifyPages:
         # Create pages with same date but different paths
         # Input order intentionally scrambled
         pages = [
-            {
-                "path": "Zebra",
-                "meta": {"published": same_date},
-                "file_mtime": now.timestamp(),
-            },
-            {
-                "path": "Alpha",
-                "meta": {"published": same_date},
-                "file_mtime": now.timestamp(),
-            },
-            {
-                "path": "Middle",
-                "meta": {"published": same_date},
-                "file_mtime": now.timestamp(),
-            },
+            make_page(
+                "Zebra", meta={"published": same_date}, file_mtime=now.timestamp()
+            ),
+            make_page(
+                "Alpha", meta={"published": same_date}, file_mtime=now.timestamp()
+            ),
+            make_page(
+                "Middle", meta={"published": same_date}, file_mtime=now.timestamp()
+            ),
         ]
 
         new_pages, _ = classify_pages(pages, window_days=30, now=now)
 
         # Should be sorted alphabetically by path as secondary sort
-        assert [p["path"] for p in new_pages] == ["Alpha", "Middle", "Zebra"]
+        assert [p.path for p in new_pages] == ["Alpha", "Middle", "Zebra"]
 
     def test_updated_pages_with_same_date_sorted_by_path(self):
         """Updated pages with the same modification date are sorted by path."""
@@ -410,27 +444,15 @@ class TestClassifyPages:
 
         # Create pages with same modification time but different paths
         pages = [
-            {
-                "path": "Zebra",
-                "meta": {"published": old_date},
-                "file_mtime": same_mtime,
-            },
-            {
-                "path": "Alpha",
-                "meta": {"published": old_date},
-                "file_mtime": same_mtime,
-            },
-            {
-                "path": "Middle",
-                "meta": {"published": old_date},
-                "file_mtime": same_mtime,
-            },
+            make_page("Zebra", meta={"published": old_date}, file_mtime=same_mtime),
+            make_page("Alpha", meta={"published": old_date}, file_mtime=same_mtime),
+            make_page("Middle", meta={"published": old_date}, file_mtime=same_mtime),
         ]
 
         _, updated_pages = classify_pages(pages, window_days=30, now=now)
 
         # Should be sorted alphabetically by path as secondary sort
-        assert [p["path"] for p in updated_pages] == ["Alpha", "Middle", "Zebra"]
+        assert [p.path for p in updated_pages] == ["Alpha", "Middle", "Zebra"]
 
 
 class TestExtractSummary:
@@ -476,18 +498,18 @@ class TestGenerateUpdatesDigest:
         recent_mtime = (now - timedelta(days=2)).timestamp()
 
         pages = [
-            {
-                "path": "PageA",
-                "title": "Page A Title",
-                "url": "/wiki/PageA/",
-                "file_mtime": recent_mtime,
-            },
-            {
-                "path": "PageB",
-                "title": "Page B Title",
-                "url": "/wiki/PageB/",
-                "file_mtime": recent_mtime,
-            },
+            make_page(
+                "PageA",
+                title="Page A Title",
+                url="/wiki/PageA/",
+                file_mtime=recent_mtime,
+            ),
+            make_page(
+                "PageB",
+                title="Page B Title",
+                url="/wiki/PageB/",
+                file_mtime=recent_mtime,
+            ),
         ]
 
         result = generate_updates_digest(pages, "https://example.com")
@@ -506,12 +528,12 @@ class TestGenerateUpdatesDigest:
     def test_uses_iso_date_format(self):
         """Uses ISO format (YYYY-MM-DD) for language-neutral dates."""
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page",
-                "url": "/wiki/TestPage/",
-                "meta": {"modified": "2024-03-15"},
-            },
+            make_page(
+                "TestPage",
+                title="Test Page",
+                url="/wiki/TestPage/",
+                meta={"modified": "2024-03-15"},
+            ),
         ]
 
         result = generate_updates_digest(pages, "https://example.com")
@@ -533,14 +555,14 @@ class TestCreateFeedItems:
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page Title",
-                "url": "/wiki/TestPage/",
-                "html": "<p>Full content here</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "TestPage",
+                title="Test Page Title",
+                url="/wiki/TestPage/",
+                html="<p>Full content here</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         items = create_feed_items(
@@ -561,14 +583,14 @@ class TestCreateFeedItems:
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page Title",
-                "url": "/wiki/TestPage/",
-                "html": "<p>This is a summary paragraph.</p><p>Second paragraph.</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "TestPage",
+                title="Test Page Title",
+                url="/wiki/TestPage/",
+                html="<p>This is a summary paragraph.</p><p>Second paragraph.</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         items = create_feed_items(
@@ -587,14 +609,13 @@ class TestCreateFeedItems:
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": f"Page{i}",
-                "title": f"Page {i}",
-                "url": f"/wiki/Page{i}/",
-                "html": "",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                f"Page{i}",
+                title=f"Page {i}",
+                url=f"/wiki/Page{i}/",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
             for i in range(10)
         ]
 
@@ -612,16 +633,15 @@ class TestCreateFeedItems:
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "CachedPage",
-                "title": "Cached Page",
-                "url": "/wiki/CachedPage/",
-                "html": "",
-                "body": "# Heading\n\nRendered body text.",
-                "base_url": "/wiki/",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "CachedPage",
+                title="Cached Page",
+                url="/wiki/CachedPage/",
+                body="# Heading\n\nRendered body text.",
+                base_url="/wiki/",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         items = create_feed_items(
@@ -670,14 +690,14 @@ enabled = true
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page",
-                "url": "/wiki/TestPage/",
-                "html": "<p>Content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "TestPage",
+                title="Test Page",
+                url="/wiki/TestPage/",
+                html="<p>Content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -723,14 +743,14 @@ enabled = false
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page",
-                "url": "/wiki/TestPage/",
-                "html": "<p>Content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "TestPage",
+                title="Test Page",
+                url="/wiki/TestPage/",
+                html="<p>Content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -770,22 +790,22 @@ enabled = true
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "about",
-                "title": "About Page",
-                "url": "/about/",  # Homepage content
-                "html": "<p>About content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            },
-            {
-                "path": "WikiPage",
-                "title": "Wiki Page",
-                "url": "/wiki/WikiPage/",  # Wiki content
-                "html": "<p>Wiki content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            },
+            make_page(
+                "about",
+                title="About Page",
+                url="/about/",
+                html="<p>About content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            ),
+            make_page(
+                "WikiPage",
+                title="Wiki Page",
+                url="/wiki/WikiPage/",
+                html="<p>Wiki content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            ),
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -831,14 +851,14 @@ window = 30
         recent_mtime = (now - timedelta(days=5)).timestamp()
 
         pages = [
-            {
-                "path": "UpdatedPage",
-                "title": "Updated Page",
-                "url": "/wiki/UpdatedPage/",
-                "html": "<p>Updated content</p>",
-                "meta": {"published": old_date},  # Old publish date
-                "file_mtime": recent_mtime,  # Recent modification
-            }
+            make_page(
+                "UpdatedPage",
+                title="Updated Page",
+                url="/wiki/UpdatedPage/",
+                html="<p>Updated content</p>",
+                meta={"published": old_date},
+                file_mtime=recent_mtime,
+            )
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -885,14 +905,14 @@ enabled = true
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page",
-                "url": "/wiki/TestPage/",
-                "html": "<p>Content with <strong>markup</strong></p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "TestPage",
+                title="Test Page",
+                url="/wiki/TestPage/",
+                html="<p>Content with <strong>markup</strong></p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -943,14 +963,14 @@ window = 30
 
         # All pages are outside the window
         pages = [
-            {
-                "path": "OldPage",
-                "title": "Old Page",
-                "url": "/wiki/OldPage/",
-                "html": "<p>Old content</p>",
-                "meta": {"published": old_date},
-                "file_mtime": old_mtime,
-            }
+            make_page(
+                "OldPage",
+                title="Old Page",
+                url="/wiki/OldPage/",
+                html="<p>Old content</p>",
+                meta={"published": old_date},
+                file_mtime=old_mtime,
+            )
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -995,22 +1015,22 @@ enabled = true
         # Mix of pages that would normally be homepage vs wiki content
         # With empty prefix, all should be included
         pages = [
-            {
-                "path": "about",
-                "title": "About Page",
-                "url": "/about/",  # Would be homepage content with prefix
-                "html": "<p>About content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            },
-            {
-                "path": "notes/MyNote",
-                "title": "My Note",
-                "url": "/notes/MyNote/",  # Regular content at root
-                "html": "<p>Note content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            },
+            make_page(
+                "about",
+                title="About Page",
+                url="/about/",
+                html="<p>About content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            ),
+            make_page(
+                "notes/MyNote",
+                title="My Note",
+                url="/notes/MyNote/",
+                html="<p>Note content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            ),
         ]
 
         generate_feed(pages, config, env, build_dir)
@@ -1062,14 +1082,14 @@ enabled = true
         recent = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         pages = [
-            {
-                "path": "TestPage",
-                "title": "Test Page",
-                "url": "/wiki/TestPage/",
-                "html": "<p>Content</p>",
-                "meta": {"published": recent},
-                "file_mtime": now.timestamp(),
-            }
+            make_page(
+                "TestPage",
+                title="Test Page",
+                url="/wiki/TestPage/",
+                html="<p>Content</p>",
+                meta={"published": recent},
+                file_mtime=now.timestamp(),
+            )
         ]
 
         generate_feed(pages, config, env, build_dir)

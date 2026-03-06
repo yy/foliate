@@ -1,9 +1,9 @@
 """Configuration loading and management for foliate."""
 
 import tomllib
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -54,7 +54,10 @@ def _find_similar(key: str, valid_keys: set[str], threshold: float = 0.6) -> str
 
 
 def _warn_unknown_keys(
-    data: dict, valid_keys: set[str], section: str, config_path: Path | None = None
+    data: dict[str, object],
+    valid_keys: set[str],
+    section: str,
+    config_path: Path | None = None,
 ) -> None:
     """Warn about unknown keys in a config section.
 
@@ -83,9 +86,9 @@ def _warn_unknown_keys(
 
 def _load_dataclass(
     cls: type[T],
-    data: dict,
+    data: dict[str, object],
     defaults: T,
-    transforms: dict[str, callable] | None = None,
+    transforms: dict[str, Callable[[object], object]] | None = None,
     section: str = "",
     config_path: Path | None = None,
 ) -> T:
@@ -103,17 +106,20 @@ def _load_dataclass(
         New instance of cls with values from data, falling back to defaults
     """
     transforms = transforms or {}
-    kwargs = {}
-    valid_keys = {f.name for f in fields(cls)}
+    kwargs: dict[str, object] = {}
+    dataclass_fields = cast(
+        dict[str, object], getattr(cast(Any, defaults), "__dataclass_fields__")
+    )
+    valid_keys = set(dataclass_fields)
 
     # Warn about unknown keys
     _warn_unknown_keys(data, valid_keys, section, config_path)
 
-    for f in fields(cls):
-        value = data.get(f.name, getattr(defaults, f.name))
-        if f.name in transforms:
-            value = transforms[f.name](value)
-        kwargs[f.name] = value
+    for field_name in valid_keys:
+        value = data.get(field_name, getattr(defaults, field_name))
+        if field_name in transforms:
+            value = transforms[field_name](value)
+        kwargs[field_name] = value
     return cls(**kwargs)
 
 
@@ -223,10 +229,15 @@ class Config:
         if not config_path.exists():
             return config
 
-        with open(config_path, "rb") as f:
-            data = tomllib.load(f)
+        with config_path.open("rb") as f:
+            data: dict[str, object] = tomllib.load(f)
 
         from .resources import expand_path
+
+        def _expand_path_value(value: object) -> object:
+            if isinstance(value, str):
+                return expand_path(value)
+            return value
 
         # Validate top-level sections
         valid_sections = {
@@ -242,72 +253,84 @@ class Config:
         _warn_unknown_keys(data, valid_sections, "top-level", config_path)
 
         # Load simple config sections using helper
-        if "site" in data:
+        site_data = data.get("site")
+        if isinstance(site_data, dict):
             config.site = _load_dataclass(
                 SiteConfig,
-                data["site"],
+                site_data,
                 config.site,
                 section="site",
                 config_path=config_path,
             )
 
-        if "build" in data:
+        build_data = data.get("build")
+        if isinstance(build_data, dict):
             config.build = _load_dataclass(
                 BuildConfig,
-                data["build"],
+                build_data,
                 config.build,
                 section="build",
                 config_path=config_path,
             )
 
-        if "footer" in data:
+        footer_data = data.get("footer")
+        if isinstance(footer_data, dict):
             config.footer = _load_dataclass(
                 FooterConfig,
-                data["footer"],
+                footer_data,
                 config.footer,
                 section="footer",
                 config_path=config_path,
             )
 
-        if "advanced" in data:
+        advanced_data = data.get("advanced")
+        if isinstance(advanced_data, dict):
             config.advanced = _load_dataclass(
                 AdvancedConfig,
-                data["advanced"],
+                advanced_data,
                 config.advanced,
-                transforms={"quarto_python": expand_path},
+                transforms={"quarto_python": _expand_path_value},
                 section="advanced",
                 config_path=config_path,
             )
 
-        if "deploy" in data:
+        deploy_data = data.get("deploy")
+        if isinstance(deploy_data, dict):
             config.deploy = _load_dataclass(
                 DeployConfig,
-                data["deploy"],
+                deploy_data,
                 config.deploy,
-                transforms={"target": expand_path},
+                transforms={"target": _expand_path_value},
                 section="deploy",
                 config_path=config_path,
             )
 
-        if "feed" in data:
+        feed_data = data.get("feed")
+        if isinstance(feed_data, dict):
             config.feed = _load_dataclass(
                 FeedConfig,
-                data["feed"],
+                feed_data,
                 config.feed,
                 section="feed",
                 config_path=config_path,
             )
 
         # Load nav items (special handling for list of items)
-        if "nav" in data and "items" in data["nav"]:
+        nav_data = data.get("nav")
+        if isinstance(nav_data, dict) and isinstance(nav_data.get("items"), list):
             config.nav = [
                 NavItem(
-                    url=item["url"],
-                    label=item["label"],
-                    logo=item.get("logo"),
-                    logo_alt=item.get("logo_alt"),
+                    url=str(item.get("url", "")),
+                    label=str(item.get("label", "")),
+                    logo=str(item["logo"]) if item.get("logo") is not None else None,
+                    logo_alt=(
+                        str(item["logo_alt"])
+                        if item.get("logo_alt") is not None
+                        else None
+                    ),
                 )
-                for item in data["nav"]["items"]
+                for item in nav_data["items"]
+                if isinstance(item, dict)
             ]
         else:
             config.nav = [
@@ -408,7 +431,7 @@ class Config:
         """Get the default base URL for wiki content."""
         return self.base_urls["wiki"]
 
-    def to_template_context(self) -> dict:
+    def to_template_context(self) -> dict[str, object]:
         """Convert config to a dict suitable for Jinja2 templates."""
         return {
             "site_name": self.site.name,

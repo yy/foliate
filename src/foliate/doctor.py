@@ -20,7 +20,9 @@ def _display_path(path: Path, base: Path) -> str:
         return str(path)
 
 
-def run_doctor(start_path: Path | None = None) -> tuple[list[str], list[str], list[str]]:
+def run_doctor(
+    start_path: Path | None = None,
+) -> tuple[list[str], list[str], list[str]]:
     """Run diagnostics and return (errors, warnings, ok)."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -66,7 +68,9 @@ def run_doctor(start_path: Path | None = None) -> tuple[list[str], list[str], li
 
     user_templates = vault_path / ".foliate" / "templates"
     if user_templates.exists():
-        ok.append(f"User templates directory: {_display_path(user_templates, start_path)}")
+        ok.append(
+            f"User templates directory: {_display_path(user_templates, start_path)}"
+        )
     else:
         ok.append("User templates directory not found (using bundled defaults).")
 

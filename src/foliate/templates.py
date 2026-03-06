@@ -1,6 +1,7 @@
 """Template management for foliate."""
 
 from pathlib import Path
+from typing import Any
 
 from jinja2 import BaseLoader, ChoiceLoader, FileSystemLoader, TemplateNotFound
 
@@ -13,18 +14,18 @@ class PackageLoader(BaseLoader):
     def __init__(self, package: str):
         self.package = package
 
-    def get_source(self, environment, template):
+    def get_source(self, environment: Any, template: str):
         source = read_package_text(self.package, template)
         if source is not None:
             # Return source, filename, and uptodate callable
             return source, f"{self.package}/{template}", lambda: True
         raise TemplateNotFound(template)
 
-    def list_templates(self):
+    def list_templates(self) -> list[str]:
         return [name for name, _ in iter_package_files(self.package, suffix=".html")]
 
 
-def get_template_loader(vault_path: Path) -> ChoiceLoader:
+def get_template_loader(vault_path: Path | None) -> ChoiceLoader:
     """Get a Jinja2 template loader with override support.
 
     Template resolution order:
@@ -37,12 +38,13 @@ def get_template_loader(vault_path: Path) -> ChoiceLoader:
     Returns:
         ChoiceLoader that checks user templates first, then bundled defaults
     """
-    loaders = []
+    loaders: list[BaseLoader] = []
 
     # Check for user template overrides
-    user_templates = vault_path / ".foliate" / "templates"
-    if user_templates.exists():
-        loaders.append(FileSystemLoader(str(user_templates)))
+    if vault_path is not None:
+        user_templates = vault_path / ".foliate" / "templates"
+        if user_templates.exists():
+            loaders.append(FileSystemLoader(str(user_templates)))
 
     # Add bundled default templates
     loaders.append(PackageLoader("foliate.defaults.templates"))

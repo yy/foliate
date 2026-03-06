@@ -16,11 +16,10 @@ from .cache import (
 )
 from .config import Config
 from .markdown_utils import (
-    extract_description,
-    extract_first_image,
     parse_markdown_file,
     render_markdown,
 )
+from .page import Frontmatter, Page
 from .templates import get_template_loader
 
 
@@ -91,50 +90,29 @@ def get_output_path(
 
 def create_page_object(
     page_path: str,
-    meta: dict,
+    meta: Frontmatter,
     markdown_content: str,
     render_html: bool = True,
     file_path: Path | None = None,
     base_url: str = "/wiki/",
-) -> dict:
+) -> Page:
     """Create a page object with all necessary fields."""
-    page_url = f"{base_url}{page_path}/"
-
-    description = meta.get("description") or extract_description(markdown_content)
-
-    image = meta.get("image") or extract_first_image(markdown_content)
-    if image and not image.startswith(("/", "http://", "https://")):
-        image = f"/assets/{image}"
-
-    page = {
-        "path": page_path,
-        "title": meta.get("title", page_path),
-        "meta": meta,
-        "body": markdown_content,
-        "html": render_markdown(markdown_content, base_url) if render_html else "",
-        "published": meta.get("published"),
-        "tags": meta.get("tags", []),
-        "date": meta.get("date"),
-        "url": page_url,
-        "base_url": base_url,
-        "description": description,
-        "image": image,
-    }
-
-    if file_path:
-        mtime = file_path.stat().st_mtime
-        page["file_modified"] = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-        page["file_mtime"] = mtime
-
-    return page
+    return Page.from_markdown(
+        page_path,
+        meta,
+        markdown_content,
+        render_html=render_html,
+        file_path=file_path,
+        base_url=base_url,
+    )
 
 
 def render_page_to_file(
-    page: dict,
+    page: Page,
     build_dir: Path,
     env: Environment,
     config: Config,
-    published_pages: list[dict] | None = None,
+    published_pages: list[Page] | None = None,
     base_url: str = "/wiki/",
 ) -> None:
     """Render a page object to HTML file."""
@@ -142,9 +120,9 @@ def render_page_to_file(
 
     # Determine output directory
     if base_url == "/":
-        page_dir = build_dir / page["path"]
+        page_dir = build_dir / page.path
     else:
-        page_dir = build_dir / wiki_dir_name / page["path"]
+        page_dir = build_dir / wiki_dir_name / page.path
 
     page_dir.mkdir(parents=True, exist_ok=True)
 
@@ -153,12 +131,12 @@ def render_page_to_file(
 
     # For home page, prepare recent pages
     home_page_name = config.build.home_page
-    recent_pages = None
-    if page["path"] == home_page_name and published_pages:
-        filtered = [p for p in published_pages if p["path"] != home_page_name]
-        recent_pages = sorted(
-            filtered, key=lambda x: x.get("file_mtime", 0), reverse=True
-        )[:20]
+    recent_pages: list[Page] | None = None
+    if page.path == home_page_name and published_pages:
+        filtered = [p for p in published_pages if p.path != home_page_name]
+        recent_pages = sorted(filtered, key=lambda x: x.file_mtime or 0, reverse=True)[
+            :20
+        ]
 
     template = env.get_template(template_name)
 
@@ -167,8 +145,8 @@ def render_page_to_file(
 
     html = template.render(
         page=page,
-        title=page["title"],
-        content=page["html"],
+        title=page.title,
+        content=page.html,
         is_static=True,
         recent_pages=recent_pages,
         current_page=page,
@@ -232,7 +210,7 @@ def process_single_md_file(
     md_file: Path,
     page_path: str,
     content_base_url: str,
-    meta: dict,
+    meta: Frontmatter,
     markdown_content: str,
     build_dir: Path,
     env: Environment,
@@ -240,7 +218,7 @@ def process_single_md_file(
     build_cache: dict,
     force_rebuild: bool,
     incremental: bool,
-) -> tuple[dict, bool]:
+) -> tuple[Page, bool]:
     """Process a single markdown file and return the page object.
 
     Returns:
@@ -291,11 +269,11 @@ def process_markdown_files(
     force_rebuild: bool,
     incremental: bool,
     single_page: str | None = None,
-) -> tuple[list[dict], list[dict], dict, dict]:
+) -> tuple[list[Page], list[Page], dict[str, float], dict[str, int]]:
     """Process all markdown files and return page data and statistics."""
-    public_pages = []
-    published_pages = []
-    new_build_cache = {}
+    public_pages: list[Page] = []
+    published_pages: list[Page] = []
+    new_build_cache: dict[str, float] = {}
     stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
 
     def _track_skipped(_md_file: Path, _page_path: str) -> None:
@@ -326,7 +304,7 @@ def process_markdown_files(
         else:
             stats["cached_count"] += 1
 
-        if meta.get("published", False):
+        if page.is_published:
             published_pages.append(page)
 
     return public_pages, published_pages, new_build_cache, stats
@@ -386,8 +364,8 @@ def remove_stale_pages(
 
 
 def render_home_page(
-    public_pages: list[dict],
-    published_pages: list[dict],
+    public_pages: list[Page],
+    published_pages: list[Page],
     build_dir: Path,
     env: Environment,
     config: Config,
@@ -396,16 +374,16 @@ def render_home_page(
     from .logging import debug
 
     home_page_name = config.build.home_page
-    home_page = next((p for p in public_pages if p["path"] == home_page_name), None)
+    home_page = next((p for p in public_pages if p.path == home_page_name), None)
     if not home_page:
         return
 
-    home_base_url = home_page.get("base_url", config.base_urls["wiki"])
+    home_base_url = home_page.base_url
 
     debug(f"  Re-rendering {home_page_name} page with recent pages...")
 
-    if not home_page.get("html"):
-        home_page["html"] = render_markdown(home_page["body"], home_base_url)
+    if not home_page.html:
+        home_page.html = render_markdown(home_page.body, home_base_url)
 
     render_page_to_file(
         home_page, build_dir, env, config, published_pages, home_base_url
@@ -414,27 +392,27 @@ def render_home_page(
 
 def generate_search_index(
     build_dir: Path,
-    public_pages: list[dict],
+    public_pages: list[Page],
     base_url: str = "/wiki/",
     wiki_dir_name: str = "wiki",
 ) -> None:
     """Generate search.json for client-side search."""
     search_data = []
     for page in public_pages:
-        content_preview = page["body"][:500] if page["body"] else ""
+        content_preview = page.body[:500] if page.body else ""
 
-        published = page["meta"].get("published", "")
+        published = page.published or ""
         if hasattr(published, "isoformat"):
             published = published.isoformat()
 
         search_data.append(
             {
-                "title": page["title"],
-                "path": page["path"],
-                "url": f"{base_url}{page['path']}/",
+                "title": page.title,
+                "path": page.path,
+                "url": f"{base_url}{page.path}/",
                 "content": content_preview,
                 "published": str(published) if published else "",
-                "tags": page.get("tags", []),
+                "tags": page.tags,
             }
         )
 
@@ -446,10 +424,10 @@ def generate_search_index(
 
 
 def generate_sitemap(
-    build_dir: Path, public_pages: list[dict], base_url: str = "/wiki/"
+    build_dir: Path, public_pages: list[Page], base_url: str = "/wiki/"
 ) -> None:
     """Generate sitemap.txt with all public page URLs."""
-    sitemap_lines = [f"{base_url}{page['path']}/" for page in public_pages]
+    sitemap_lines = [f"{base_url}{page.path}/" for page in public_pages]
     (build_dir / "sitemap.txt").write_text("\n".join(sitemap_lines), encoding="utf-8")
 
 
@@ -457,8 +435,8 @@ def generate_site_files(
     build_dir: Path,
     env: Environment,
     config: Config,
-    published_pages: list[dict],
-    public_pages: list[dict],
+    published_pages: list[Page],
+    public_pages: list[Page],
 ) -> None:
     """Generate site-wide files: home redirect, wiki redirect, search.json, sitemap."""
     wiki_base_url = config.base_urls["wiki"]
@@ -533,15 +511,15 @@ def _setup_build_environment(
     build_dir.mkdir(parents=True, exist_ok=True)
 
     # Setup Jinja2 environment with template loader
-    env = Environment(loader=get_template_loader(vault_path))  # type: ignore[arg-type]
+    env = Environment(loader=get_template_loader(vault_path))
 
     return build_dir, cache_file, build_cache, env, force_rebuild
 
 
 def _print_build_summary(
-    stats: dict,
-    public_pages: list[dict],
-    published_pages: list[dict],
+    stats: dict[str, int],
+    public_pages: list[Page],
+    published_pages: list[Page],
     build_dir: Path,
     incremental: bool,
     force_rebuild: bool,
@@ -565,7 +543,10 @@ def _print_build_summary(
     if incremental and not force_rebuild:
         rebuilt = stats["rebuilt_count"]
         cached = stats["cached_count"]
-        summary = f"Done: {rebuilt} rebuilt, {cached} cached, {len(published_pages)} published"
+        summary = (
+            f"Done: {rebuilt} rebuilt, {cached} cached, "
+            f"{len(published_pages)} published"
+        )
     else:
         summary = f"Done: {len(public_pages)} public, {len(published_pages)} published"
     info(summary)

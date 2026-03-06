@@ -11,6 +11,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from .config import Config
+from .page import Page
 
 
 def extract_wiki_path(href: str, wiki_prefix: str = "wiki") -> str | None:
@@ -66,33 +67,33 @@ def sanitize_wikilinks(
     # Restore previously sanitized private links if target pages are now public.
     private_spans = soup.find_all("span", class_="wikilink-private")
     for span in private_spans:
-        wiki_path = span.get("data-wiki-path", "")
+        wiki_path_attr = span.get("data-wiki-path", "")
+        wiki_path = wiki_path_attr if isinstance(wiki_path_attr, str) else ""
         if wiki_path and wiki_path in public_pages:
             href = f"/{wiki_prefix}/{wiki_path}/" if wiki_prefix else f"/{wiki_path}/"
             span.name = "a"
-            span.attrs = {
-                "class": ["wikilink"],
-                "href": href,
-                "rel": "nofollow",
-            }
+            span.attrs.clear()
+            span["class"] = "wikilink"
+            span["href"] = href
+            span["rel"] = "nofollow"
             modified = True
 
     # Find all wikilinks
     wikilinks = soup.find_all("a", class_="wikilink")
 
     for link in wikilinks:
-        href = link.get("href", "")
-        wiki_path = extract_wiki_path(href, wiki_prefix)
+        href_attr = link.get("href", "")
+        href = href_attr if isinstance(href_attr, str) else ""
+        wiki_target = extract_wiki_path(href, wiki_prefix)
 
-        if wiki_path and wiki_path not in public_pages:
+        if wiki_target and wiki_target not in public_pages:
             # This is a link to a private page.
             # Convert it to a span marker so future builds can restore it.
-            debug(f"    Removed private link: {wiki_path} -> {link.get_text()}")
+            debug(f"    Removed private link: {wiki_target} -> {link.get_text()}")
             link.name = "span"
-            link.attrs = {
-                "class": ["wikilink-private"],
-                "data-wiki-path": wiki_path,
-            }
+            link.attrs.clear()
+            link["class"] = "wikilink-private"
+            link["data-wiki-path"] = wiki_target
             modified = True
             removed_links_count += 1
 
@@ -100,7 +101,8 @@ def sanitize_wikilinks(
     cleaned_dollars = False
     for text_node in soup.find_all(string=lambda t: t and "\\$" in t):
         # Skip script and style tags
-        if text_node.parent.name in ("script", "style", "code", "pre"):
+        parent = text_node.parent
+        if parent is not None and parent.name in ("script", "style", "code", "pre"):
             continue
         new_text = text_node.replace("\\$", "$")
         text_node.replace_with(NavigableString(new_text))
@@ -151,7 +153,7 @@ def process_html_file(
             change_summary = f" ({', '.join(changes)})" if changes else ""
             # Show relative path from build dir, or parent folder name
             if build_dir:
-                display_path = html_file.parent.relative_to(build_dir)
+                display_path = str(html_file.parent.relative_to(build_dir))
             else:
                 display_path = html_file.parent.name
             debug(f"  Sanitized: {display_path}{change_summary}")
@@ -165,14 +167,14 @@ def process_html_file(
 
 def postprocess_links(
     config: Config,
-    public_pages: list[dict],
+    public_pages: list[Page],
     single_page: str | None = None,
 ) -> bool:
     """Post-process HTML files to sanitize wikilinks.
 
     Args:
         config: Foliate configuration
-        public_pages: List of public page dicts from build
+        public_pages: List of public pages from build
         single_page: If specified, only process this page (used in watch mode)
 
     Returns:
@@ -188,7 +190,7 @@ def postprocess_links(
         return False
 
     # Extract public page paths into a set for fast lookup
-    public_paths = {page["path"] for page in public_pages}
+    public_paths = {page.path for page in public_pages}
 
     if not single_page:
         debug(f"Post-processing with {len(public_paths)} public pages...")

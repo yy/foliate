@@ -1,7 +1,7 @@
 """Atom feed generation for foliate."""
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 # Re-export FeedConfig from config for convenience
 from .config import FeedConfig
 from .markdown_utils import render_markdown
+from .page import Page
+from .page import parse_frontmatter_date as parse_frontmatter_date
 
 if TYPE_CHECKING:
     from jinja2 import Environment
@@ -32,51 +34,7 @@ class FeedItem:
     summary: Optional[str] = None
 
 
-def parse_frontmatter_date(value) -> Optional[datetime]:
-    """Parse a frontmatter date value to datetime.
-
-    Accepts:
-        - ISO 8601 date string: "2024-03-15"
-        - ISO 8601 datetime string: "2024-03-15T10:30:00"
-        - With timezone: "2024-03-15T10:30:00+09:00"
-        - date object
-        - datetime object
-
-    Returns:
-        datetime in UTC, or None if parsing fails
-    """
-    if value is None:
-        return None
-
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
-
-    if not isinstance(value, str):
-        return None
-
-    # Try parsing as ISO date/datetime
-    try:
-        if "T" in value:
-            # Datetime - normalize Z to +00:00 for fromisoformat
-            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                # No timezone info, assume UTC
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone(timezone.utc)
-        else:
-            # Date only
-            d = date.fromisoformat(value)
-            return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-    except (ValueError, TypeError):
-        return None
-
-
-def get_published_date(page: dict) -> Optional[datetime]:
+def get_published_date(page: Page) -> Optional[datetime]:
     """Extract publication date from page.
 
     Resolution order:
@@ -84,34 +42,10 @@ def get_published_date(page: dict) -> Optional[datetime]:
         2. date field
         3. file modification time (fallback)
     """
-    meta = page.get("meta", {})
-
-    # Check published field (if it's a date, not boolean)
-    published = meta.get("published")
-    if published is not None and published is not True and published is not False:
-        result = parse_frontmatter_date(published)
-        if result:
-            return result
-
-    # Check date field
-    date_val = meta.get("date")
-    if date_val:
-        result = parse_frontmatter_date(date_val)
-        if result:
-            return result
-
-    # Fallback to file mtime
-    file_mtime = page.get("file_mtime")
-    if file_mtime:
-        try:
-            return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
-        except (OSError, OverflowError, ValueError):
-            pass
-
-    return None
+    return page.published_at
 
 
-def get_modified_date(page: dict) -> Optional[datetime]:
+def get_modified_date(page: Page) -> Optional[datetime]:
     """Extract modification date from page.
 
     Resolution order:
@@ -119,25 +53,7 @@ def get_modified_date(page: dict) -> Optional[datetime]:
         2. file modification time
         3. published date (fallback)
     """
-    meta = page.get("meta", {})
-
-    # Check modified field
-    modified = meta.get("modified")
-    if modified:
-        result = parse_frontmatter_date(modified)
-        if result:
-            return result
-
-    # Fallback to file mtime
-    file_mtime = page.get("file_mtime")
-    if file_mtime:
-        try:
-            return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
-        except (OSError, OverflowError, ValueError):
-            pass
-
-    # Final fallback to published date
-    return get_published_date(page)
+    return page.modified_at
 
 
 def format_atom_date(dt: datetime) -> str:
@@ -153,10 +69,10 @@ def format_atom_date(dt: datetime) -> str:
 
 
 def classify_pages(
-    pages: list[dict],
+    pages: list[Page],
     window_days: int,
     now: Optional[datetime] = None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[Page], list[Page]]:
     """Classify pages into 'new' and 'updated' categories.
 
     Args:
@@ -171,8 +87,8 @@ def classify_pages(
         now = datetime.now(timezone.utc)
 
     window_start = now - timedelta(days=window_days)
-    new_pages = []
-    updated_pages = []
+    new_pages: list[Page] = []
+    updated_pages: list[Page] = []
 
     for page in pages:
         published = get_published_date(page)
@@ -192,11 +108,9 @@ def classify_pages(
         # else: page is outside window entirely, skip
 
     # Sort by date descending, then by path ascending for deterministic order
-    new_pages.sort(
-        key=lambda p: (-(get_published_date(p) or now).timestamp(), p["path"])
-    )
+    new_pages.sort(key=lambda p: (-(get_published_date(p) or now).timestamp(), p.path))
     updated_pages.sort(
-        key=lambda p: (-(get_modified_date(p) or now).timestamp(), p["path"])
+        key=lambda p: (-(get_modified_date(p) or now).timestamp(), p.path)
     )
 
     return new_pages, updated_pages
@@ -234,7 +148,7 @@ def extract_summary(html: str, max_length: int = 300) -> str:
     return text
 
 
-def generate_updates_digest(pages: list[dict], site_url: str) -> str:
+def generate_updates_digest(pages: list[Page], site_url: str) -> str:
     """Generate HTML content for the updates digest entry.
 
     Args:
@@ -250,8 +164,8 @@ def generate_updates_digest(pages: list[dict], site_url: str) -> str:
     lines = ["<p>The following pages were recently updated:</p>", "<ul>"]
 
     for page in pages:
-        title = escape(page.get("title", page["path"]))
-        url = escape(f"{site_url}{page['url']}", quote=True)
+        title = escape(page.title)
+        url = escape(f"{site_url}{page.url}", quote=True)
         modified = get_modified_date(page)
         date_str = modified.strftime("%Y-%m-%d") if modified else ""
 
@@ -262,7 +176,7 @@ def generate_updates_digest(pages: list[dict], site_url: str) -> str:
 
 
 def create_feed_items(
-    pages: list[dict],
+    pages: list[Page],
     site_url: str,
     full_content: bool,
     max_items: int,
@@ -278,27 +192,27 @@ def create_feed_items(
     Returns:
         List of FeedItem objects
     """
-    items = []
+    items: list[FeedItem] = []
 
     for page in pages[:max_items]:
         published = get_published_date(page)
-        modified = get_modified_date(page) or published
 
         if not published:
             continue
+        modified = get_modified_date(page) or published
 
-        url = f"{site_url}{page['url']}"
-        content = page.get("html", "")
-        if not content and page.get("body"):
+        url = f"{site_url}{page.url}"
+        content = page.html
+        if not content and page.body:
             content = render_markdown(
-                page["body"],
-                page.get("base_url", "/wiki/"),
+                page.body,
+                page.base_url or "/wiki/",
             )
 
         summary = extract_summary(content) if not full_content else None
 
         item = FeedItem(
-            title=page.get("title", page["path"]),
+            title=page.title,
             url=url,
             content=content if full_content else "",
             published=published,
@@ -311,7 +225,7 @@ def create_feed_items(
 
 
 def generate_feed(
-    pages: list[dict],
+    pages: list[Page],
     config: "Config",
     templates: "Environment",
     output_dir: Path,
@@ -339,7 +253,7 @@ def generate_feed(
 
     # Only include pages whose URL starts with wiki prefix
     # This excludes _homepage/ content which goes to /
-    wiki_pages = [p for p in pages if p.get("url", "").startswith(wiki_url_prefix)]
+    wiki_pages = [p for p in pages if p.url.startswith(wiki_url_prefix)]
 
     # If wiki prefix is empty, we can't distinguish - include all pages
     # Otherwise, only include wiki pages
@@ -371,21 +285,24 @@ def generate_feed(
     if updated_pages:
         digest_content = generate_updates_digest(updated_pages, site_url)
         most_recent_update = get_modified_date(updated_pages[0])
-        updates_entry = {
-            "content": digest_content,
-            "updated": format_atom_date(most_recent_update),
-        }
+        if most_recent_update is not None:
+            updates_entry = {
+                "content": digest_content,
+                "updated": format_atom_date(most_recent_update),
+            }
 
     # Determine feed metadata
     feed_title = feed_config.title or config.site.name
     feed_description = feed_config.description or f"{config.site.name} - Recent updates"
 
     # Determine feed updated time (most recent of all entries)
-    all_dates = []
+    all_dates: list[datetime] = []
     if new_items:
         all_dates.extend(item.updated for item in new_items)
     if updates_entry and updated_pages:
-        all_dates.append(get_modified_date(updated_pages[0]))
+        updated_at = get_modified_date(updated_pages[0])
+        if updated_at is not None:
+            all_dates.append(updated_at)
     feed_updated = max(all_dates) if all_dates else now
 
     # Format items for template

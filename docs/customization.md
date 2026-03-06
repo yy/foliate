@@ -106,6 +106,9 @@ These variables are available in all templates:
 | `page.date` | Publication date from frontmatter | |
 | `page.file_modified` | File modification date | `"2024-01-15"` |
 | `page.published` | Whether page is published (visible in listings) | |
+| `page.is_published` | Normalized published/listed flag | `true` |
+| `page.published_at` | Normalized publication datetime when resolvable | |
+| `page.modified_at` | Normalized modification datetime | |
 | `page.tags` | List of tags from frontmatter | |
 | `page.meta` | Full frontmatter dict (access any custom field) | |
 | `content` | Rendered HTML content (use with `\|safe` filter) | |

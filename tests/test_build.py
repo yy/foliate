@@ -61,27 +61,30 @@ class TestCreatePageObject:
 
         page = build.create_page_object("test", meta, content, render_html=False)
 
-        assert page["path"] == "test"
-        assert page["title"] == "Test Page"
-        assert page["body"] == content
-        assert page["url"] == "/wiki/test/"
+        assert page.path == "test"
+        assert page.title == "Test Page"
+        assert page.body == content
+        assert page.url == "/wiki/test/"
 
     def test_uses_path_as_default_title(self):
         """Uses path as title when not in meta."""
         meta = {"public": True}
         page = build.create_page_object("my-page", meta, "content", render_html=False)
 
-        assert page["title"] == "my-page"
+        assert page.title == "my-page"
 
     def test_extracts_description(self):
         """Auto-extracts description from content."""
         meta = {"public": True}
-        content = "This is a long enough paragraph that should be used as the description for the page."
+        content = (
+            "This is a long enough paragraph that should be used as the "
+            "description for the page."
+        )
 
         page = build.create_page_object("test", meta, content, render_html=False)
 
-        assert page["description"] != ""
-        assert "paragraph" in page["description"]
+        assert page.description != ""
+        assert "paragraph" in page.description
 
     def test_uses_meta_description(self):
         """Uses description from meta if provided."""
@@ -90,7 +93,7 @@ class TestCreatePageObject:
 
         page = build.create_page_object("test", meta, content, render_html=False)
 
-        assert page["description"] == "Custom description"
+        assert page.description == "Custom description"
 
     def test_extracts_image(self):
         """Auto-extracts image from content."""
@@ -99,7 +102,7 @@ class TestCreatePageObject:
 
         page = build.create_page_object("test", meta, content, render_html=False)
 
-        assert page["image"] == "/assets/image.png"
+        assert page.image == "/assets/image.png"
 
     def test_uses_meta_image(self):
         """Uses image from meta if provided."""
@@ -108,7 +111,7 @@ class TestCreatePageObject:
 
         page = build.create_page_object("test", meta, content, render_html=False)
 
-        assert page["image"] == "/custom/image.png"
+        assert page.image == "/custom/image.png"
 
     def test_custom_base_url(self):
         """Respects custom base_url."""
@@ -116,7 +119,7 @@ class TestCreatePageObject:
             "about", {}, "content", render_html=False, base_url="/"
         )
 
-        assert page["url"] == "/about/"
+        assert page.url == "/about/"
 
     def test_includes_file_modification_time(self, tmp_path):
         """Includes file modification time when file_path provided."""
@@ -127,8 +130,8 @@ class TestCreatePageObject:
             "test", {}, "content", render_html=False, file_path=md_file
         )
 
-        assert "file_modified" in page
-        assert "file_mtime" in page
+        assert page.file_modified is not None
+        assert page.file_mtime is not None
 
 
 class TestIsPathIgnored:
@@ -372,9 +375,17 @@ This should not be built.
         result = build.build(config=config, force_rebuild=True)
 
         assert result == 1
-        assert (vault_path / ".foliate" / "build" / "wiki" / "public" / "index.html").exists()
+        assert (
+            vault_path / ".foliate" / "build" / "wiki" / "public" / "index.html"
+        ).exists()
         assert not (
-            vault_path / ".foliate" / "build" / "wiki" / ".foliate" / "notes" / "index.html"
+            vault_path
+            / ".foliate"
+            / "build"
+            / "wiki"
+            / ".foliate"
+            / "notes"
+            / "index.html"
         ).exists()
 
     def test_wiki_root_redirect(self, tmp_path):

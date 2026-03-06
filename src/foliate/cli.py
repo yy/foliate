@@ -93,7 +93,10 @@ def init(force: bool):
 @main.command()
 @click.option("--force", "-f", is_flag=True, help="Force full rebuild")
 @click.option(
-    "--dry-run", "-n", is_flag=True, help="Show what would be built without writing files"
+    "--dry-run",
+    "-n",
+    is_flag=True,
+    help="Show what would be built without writing files",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.option("--serve", "-s", is_flag=True, help="Start local server after build")
@@ -207,7 +210,9 @@ def doctor():
 
 
 @main.command()
-@click.option("--verbose", "-v", is_flag=True, help="Show all pages including unchanged")
+@click.option(
+    "--verbose", "-v", is_flag=True, help="Show all pages including unchanged"
+)
 def status(verbose: bool):
     """Show which pages would be built or deployed."""
     from .logging import setup_logging

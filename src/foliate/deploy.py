@@ -287,7 +287,7 @@ def deploy_github_pages(
         )
     else:
         # Always show output in non-dry-run so user sees what's happening.
-        rsync_result = subprocess.run(rsync_args)
+        rsync_result = subprocess.run(rsync_args, text=True)
 
     if rsync_result.returncode != 0:
         error("rsync failed")

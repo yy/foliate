@@ -10,6 +10,7 @@ test:
 	uv run pytest
 
 ci:
+	uv run mypy src/foliate
 	uv run pytest -q
 	uv build
 

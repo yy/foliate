@@ -15,6 +15,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  typecheck:
+    name: typecheck (ubuntu, py3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run mypy
+        run: uv run mypy src/foliate
+
   test-matrix:
     name: test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
@@ -45,7 +68,7 @@ jobs:
 
   build-and-smoke:
     name: build-smoke (${{ matrix.os }}, py3.13)
-    needs: test-matrix
+    needs: [typecheck, test-matrix]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

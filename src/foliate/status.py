@@ -185,8 +185,8 @@ def scan_status(config: Config) -> StatusReport:
         )
 
         meta, _ = parse_markdown_file(md_file)
-        is_public = meta.get("public", False)
-        is_published = meta.get("published", False)
+        is_public = bool(meta.get("public", False))
+        is_published = bool(meta.get("published", False))
 
         if is_public:
             state = _get_page_state(
