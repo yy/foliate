@@ -7,6 +7,28 @@ from pathlib import Path
 from .config import Config
 
 
+def _dry_run_has_rsync_changes(rsync_stdout: str) -> bool:
+    """Return True when rsync --dry-run output indicates file changes."""
+    if not rsync_stdout:
+        return False
+
+    noise_prefixes = (
+        "sending incremental file list",
+        "sent ",
+        "total size is ",
+        "created directory ",
+    )
+    for line in rsync_stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped == "./":
+            continue
+        if any(stripped.startswith(prefix) for prefix in noise_prefixes):
+            continue
+        return True
+
+    return False
+
+
 def is_build_stale(config: Config) -> bool | None:
     """Check if the build directory is stale (source files modified after build).
 
@@ -251,32 +273,51 @@ def deploy_github_pages(
 
     if dry_run:
         rsync_args.insert(1, "--dry-run")
+        rsync_args.insert(2, "--itemize-changes")
         info("Dry run - showing what would be done:\n")
 
     info(f"Syncing {build_dir} -> {target}")
 
-    # Run rsync (always show output so user sees what's happening)
-    rsync_result = subprocess.run(rsync_args)
+    # Run rsync
+    if dry_run:
+        rsync_result = subprocess.run(
+            rsync_args,
+            capture_output=True,
+            text=True,
+        )
+    else:
+        # Always show output in non-dry-run so user sees what's happening.
+        rsync_result = subprocess.run(rsync_args)
+
     if rsync_result.returncode != 0:
         error("rsync failed")
         return False
 
-    # Check for changes in target repo
-    diff_result = subprocess.run(
-        ["git", "diff", "--quiet"],
-        cwd=target,
-        capture_output=True,
-    )
+    if dry_run:
+        if rsync_result.stdout:
+            info(rsync_result.stdout.rstrip())
+        has_changes = _dry_run_has_rsync_changes(rsync_result.stdout)
+        if not has_changes:
+            info("No changes to deploy")
+            return True
 
-    # Also check for untracked files
-    status_result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=target,
-        capture_output=True,
-        text=True,
-    )
+    else:
+        # Check for changes in target repo
+        diff_result = subprocess.run(
+            ["git", "diff", "--quiet"],
+            cwd=target,
+            capture_output=True,
+        )
 
-    has_changes = diff_result.returncode != 0 or bool(status_result.stdout.strip())
+        # Also check for untracked files
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+        )
+
+        has_changes = diff_result.returncode != 0 or bool(status_result.stdout.strip())
 
     if not has_changes:
         info("No changes to deploy")

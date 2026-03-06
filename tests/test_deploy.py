@@ -302,6 +302,82 @@ class TestDeployGithubPages:
             assert len(rsync_calls) > 0
             assert "--dry-run" in str(rsync_calls[0])
 
+    @patch("foliate.logging.info")
+    @patch("foliate.deploy.subprocess.run")
+    def test_dry_run_uses_rsync_output_to_detect_changes(self, mock_run, mock_info):
+        """Should report commit intent when rsync dry-run shows file changes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html></html>")
+
+            target_dir = Path(tmpdir) / "target"
+            target_dir.mkdir()
+            (target_dir / ".git").mkdir()
+            config.deploy = DeployConfig(target=str(target_dir))
+
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=(
+                    "sending incremental file list\n"
+                    ">f+++++++++ index.html\n\n"
+                    "sent 91 bytes  received 19 bytes  220.00 bytes/sec\n"
+                    "total size is 14  speedup is 0.13 (DRY RUN)\n"
+                ),
+                stderr="",
+            )
+
+            result = deploy_github_pages(config, dry_run=True)
+
+            assert result is True
+            mock_run.assert_called_once()
+            called_args = mock_run.call_args[0][0]
+            assert called_args[0] == "rsync"
+            assert "--dry-run" in called_args
+            assert "--itemize-changes" in called_args
+            info_messages = [call.args[0] for call in mock_info.call_args_list]
+            assert any("Would commit with message:" in msg for msg in info_messages)
+
+    @patch("foliate.logging.info")
+    @patch("foliate.deploy.subprocess.run")
+    def test_dry_run_reports_no_changes_when_rsync_output_is_empty(
+        self, mock_run, mock_info
+    ):
+        """Should return early when rsync dry-run reports no file changes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html></html>")
+
+            target_dir = Path(tmpdir) / "target"
+            target_dir.mkdir()
+            (target_dir / ".git").mkdir()
+            config.deploy = DeployConfig(target=str(target_dir))
+
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=(
+                    "sending incremental file list\n\n"
+                    "sent 39 bytes  received 12 bytes  102.00 bytes/sec\n"
+                    "total size is 14  speedup is 0.27 (DRY RUN)\n"
+                ),
+                stderr="",
+            )
+
+            result = deploy_github_pages(config, dry_run=True)
+
+            assert result is True
+            mock_run.assert_called_once()
+            info_messages = [call.args[0] for call in mock_info.call_args_list]
+            assert any("No changes to deploy" in msg for msg in info_messages)
+            assert not any("Would commit with message:" in msg for msg in info_messages)
+
     @patch("foliate.deploy.subprocess.run")
     def test_excludes_configured_files(self, mock_run):
         """Should exclude files specified in config."""
