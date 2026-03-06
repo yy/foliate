@@ -1,3 +1,3 @@
 """Foliate - Minimal static site generator for markdown vaults."""
 
-__version__ = "0.5.3"
+__version__ = "0.6.0"
