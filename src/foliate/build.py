@@ -222,7 +222,7 @@ def process_single_md_file(
     """Process a single markdown file and return the page object.
 
     Returns:
-        Tuple of (page_dict, was_rebuilt)
+        Tuple of (page, was_rebuilt)
     """
     from .logging import debug
 
@@ -401,9 +401,7 @@ def generate_search_index(
     for page in public_pages:
         content_preview = page.body[:500] if page.body else ""
 
-        published = page.published or ""
-        if hasattr(published, "isoformat"):
-            published = published.isoformat()
+        published_str = page.published_at.isoformat() if page.published_at else ""
 
         search_data.append(
             {
@@ -411,7 +409,7 @@ def generate_search_index(
                 "path": page.path,
                 "url": f"{base_url}{page.path}/",
                 "content": content_preview,
-                "published": str(published) if published else "",
+                "published": published_str,
                 "tags": page.tags,
             }
         )

@@ -76,7 +76,7 @@ def classify_pages(
     """Classify pages into 'new' and 'updated' categories.
 
     Args:
-        pages: List of page dictionaries
+        pages: List of Page objects
         window_days: Number of days to look back
         now: Current datetime (for testing), defaults to now
 
@@ -184,7 +184,7 @@ def create_feed_items(
     """Create FeedItem objects from pages.
 
     Args:
-        pages: List of page dictionaries
+        pages: List of Page objects
         site_url: Base URL of the site
         full_content: Whether to include full content or summary
         max_items: Maximum number of items to include
@@ -233,7 +233,7 @@ def generate_feed(
     """Generate Atom feed with new pages and updates digest.
 
     Args:
-        pages: List of published page dictionaries
+        pages: List of published Page objects
         config: Site configuration
         templates: Jinja2 environment
         output_dir: Build output directory

@@ -3,7 +3,7 @@
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, TypeVar, cast
+from typing import Callable, TypeVar
 
 T = TypeVar("T")
 
@@ -105,12 +105,11 @@ def _load_dataclass(
     Returns:
         New instance of cls with values from data, falling back to defaults
     """
+    from dataclasses import fields as dc_fields
+
     transforms = transforms or {}
     kwargs: dict[str, object] = {}
-    dataclass_fields = cast(
-        dict[str, object], getattr(cast(Any, defaults), "__dataclass_fields__")
-    )
-    valid_keys = set(dataclass_fields)
+    valid_keys = {f.name for f in dc_fields(cls)}  # type: ignore[arg-type]
 
     # Warn about unknown keys
     _warn_unknown_keys(data, valid_keys, section, config_path)
@@ -121,6 +120,84 @@ def _load_dataclass(
             value = transforms[field_name](value)
         kwargs[field_name] = value
     return cls(**kwargs)
+
+
+def _require_section_dict(
+    data: dict[str, object], section: str, config_path: Path
+) -> dict[str, object] | None:
+    """Return a config section if present, otherwise validate its shape."""
+    section_data = data.get(section)
+    if section_data is None:
+        return None
+    if not isinstance(section_data, dict):
+        raise TypeError(
+            f"Config section [{section}] in {config_path} must be a table, "
+            f"got {type(section_data).__name__}"
+        )
+    return section_data
+
+
+def _load_nav_items(data: dict[str, object], config_path: Path) -> list["NavItem"]:
+    """Load and validate nav items."""
+    nav_data = _require_section_dict(data, "nav", config_path)
+    if nav_data is None:
+        return [
+            NavItem(url="/about/", label="About"),
+            NavItem(url="/wiki/Home/", label="Wiki"),
+        ]
+
+    items = nav_data.get("items")
+    if items is None:
+        return [
+            NavItem(url="/about/", label="About"),
+            NavItem(url="/wiki/Home/", label="Wiki"),
+        ]
+    if not isinstance(items, list):
+        raise TypeError(
+            f"Config section [nav].items in {config_path} must be a list, "
+            f"got {type(items).__name__}"
+        )
+
+    nav_items: list[NavItem] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise TypeError(
+                f"Config section [nav].items[{index}] in {config_path} must be a "
+                f"table, got {type(item).__name__}"
+            )
+        if "url" not in item:
+            raise KeyError(f"Missing required key 'url' in [nav].items[{index}]")
+        if "label" not in item:
+            raise KeyError(f"Missing required key 'label' in [nav].items[{index}]")
+
+        url = item["url"]
+        label = item["label"]
+        logo = item.get("logo")
+        logo_alt = item.get("logo_alt")
+        if not isinstance(url, str):
+            raise TypeError(
+                f"Config section [nav].items[{index}].url in {config_path} must be "
+                f"a string, got {type(url).__name__}"
+            )
+        if not isinstance(label, str):
+            raise TypeError(
+                f"Config section [nav].items[{index}].label in {config_path} must be "
+                f"a string, got {type(label).__name__}"
+            )
+        if logo is not None and not isinstance(logo, str):
+            raise TypeError(
+                f"Config section [nav].items[{index}].logo in {config_path} must be "
+                f"a string, got {type(logo).__name__}"
+            )
+        if logo_alt is not None and not isinstance(logo_alt, str):
+            raise TypeError(
+                f"Config section [nav].items[{index}].logo_alt in {config_path} "
+                f"must be a string, got {type(logo_alt).__name__}"
+            )
+
+        nav_items.append(NavItem(url=url, label=label, logo=logo, logo_alt=logo_alt))
+
+    return nav_items
 
 
 @dataclass
@@ -253,8 +330,8 @@ class Config:
         _warn_unknown_keys(data, valid_sections, "top-level", config_path)
 
         # Load simple config sections using helper
-        site_data = data.get("site")
-        if isinstance(site_data, dict):
+        site_data = _require_section_dict(data, "site", config_path)
+        if site_data is not None:
             config.site = _load_dataclass(
                 SiteConfig,
                 site_data,
@@ -263,8 +340,8 @@ class Config:
                 config_path=config_path,
             )
 
-        build_data = data.get("build")
-        if isinstance(build_data, dict):
+        build_data = _require_section_dict(data, "build", config_path)
+        if build_data is not None:
             config.build = _load_dataclass(
                 BuildConfig,
                 build_data,
@@ -273,8 +350,8 @@ class Config:
                 config_path=config_path,
             )
 
-        footer_data = data.get("footer")
-        if isinstance(footer_data, dict):
+        footer_data = _require_section_dict(data, "footer", config_path)
+        if footer_data is not None:
             config.footer = _load_dataclass(
                 FooterConfig,
                 footer_data,
@@ -283,8 +360,8 @@ class Config:
                 config_path=config_path,
             )
 
-        advanced_data = data.get("advanced")
-        if isinstance(advanced_data, dict):
+        advanced_data = _require_section_dict(data, "advanced", config_path)
+        if advanced_data is not None:
             config.advanced = _load_dataclass(
                 AdvancedConfig,
                 advanced_data,
@@ -294,8 +371,8 @@ class Config:
                 config_path=config_path,
             )
 
-        deploy_data = data.get("deploy")
-        if isinstance(deploy_data, dict):
+        deploy_data = _require_section_dict(data, "deploy", config_path)
+        if deploy_data is not None:
             config.deploy = _load_dataclass(
                 DeployConfig,
                 deploy_data,
@@ -305,8 +382,8 @@ class Config:
                 config_path=config_path,
             )
 
-        feed_data = data.get("feed")
-        if isinstance(feed_data, dict):
+        feed_data = _require_section_dict(data, "feed", config_path)
+        if feed_data is not None:
             config.feed = _load_dataclass(
                 FeedConfig,
                 feed_data,
@@ -315,28 +392,7 @@ class Config:
                 config_path=config_path,
             )
 
-        # Load nav items (special handling for list of items)
-        nav_data = data.get("nav")
-        if isinstance(nav_data, dict) and isinstance(nav_data.get("items"), list):
-            config.nav = [
-                NavItem(
-                    url=str(item.get("url", "")),
-                    label=str(item.get("label", "")),
-                    logo=str(item["logo"]) if item.get("logo") is not None else None,
-                    logo_alt=(
-                        str(item["logo_alt"])
-                        if item.get("logo_alt") is not None
-                        else None
-                    ),
-                )
-                for item in nav_data["items"]
-                if isinstance(item, dict)
-            ]
-        else:
-            config.nav = [
-                NavItem(url="/about/", label="About"),
-                NavItem(url="/wiki/Home/", label="Wiki"),
-            ]
+        config.nav = _load_nav_items(data, config_path)
 
         return config
 

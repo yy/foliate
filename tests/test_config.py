@@ -167,6 +167,27 @@ window = 7
         assert config.feed.full_content is False
         assert config.feed.window == 7
 
+    def test_nav_items_loaded(self, tmp_path):
+        """Nav items preserve configured values."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[nav]
+items = [
+  { url = "/docs/", label = "Docs" },
+  { url = "/about/", label = "About", logo = "/logo.svg", logo_alt = "Site logo" },
+]
+"""
+        )
+
+        config = Config.load(config_path)
+
+        assert [item.label for item in config.nav] == ["Docs", "About"]
+        assert config.nav[1].logo == "/logo.svg"
+        assert config.nav[1].logo_alt == "Site logo"
+
 
 class TestConfigValidation:
     """Tests for config validation and warnings."""
@@ -336,4 +357,52 @@ name = "Unclosed string
         )
 
         with pytest.raises(tomllib.TOMLDecodeError):
+            Config.load(config_path)
+
+    def test_load_raises_on_invalid_section_type(self, tmp_path):
+        """Config sections must use table syntax."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text('site = "bad"\n')
+
+        with pytest.raises(TypeError, match=r"\[site\].*must be a table"):
+            Config.load(config_path)
+
+    def test_load_raises_on_invalid_nav_items_type(self, tmp_path):
+        """Nav items must be configured as a list."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[nav]
+items = "bad"
+"""
+        )
+
+        with pytest.raises(TypeError, match=r"\[nav\]\.items.*must be a list"):
+            Config.load(config_path)
+
+    def test_load_raises_on_missing_nav_item_url(self, tmp_path):
+        """Nav items still require url and label keys."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[nav]
+items = [
+  { label = "Docs" },
+]
+"""
+        )
+
+        with pytest.raises(KeyError, match="url"):
             Config.load(config_path)

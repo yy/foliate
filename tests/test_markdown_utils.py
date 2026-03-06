@@ -1,5 +1,7 @@
 """Tests for foliate markdown utilities."""
 
+import threading
+
 from foliate import markdown_utils
 
 
@@ -52,7 +54,10 @@ class TestExtractDescription:
 
     def test_strips_markdown_formatting(self):
         """Strips bold, italic, and other markdown formatting."""
-        content = "This is **bold** and *italic* text with some content here to make it long enough."
+        content = (
+            "This is **bold** and *italic* text with some content here to make "
+            "it long enough."
+        )
         result = markdown_utils.extract_description(content)
         assert "**" not in result
         assert "bold" in result
@@ -60,7 +65,10 @@ class TestExtractDescription:
 
     def test_strips_links(self):
         """Strips markdown links but keeps text."""
-        content = "Check out [this link](https://example.com) for more information about the topic."
+        content = (
+            "Check out [this link](https://example.com) for more information "
+            "about the topic."
+        )
         result = markdown_utils.extract_description(content)
         assert "[" not in result
         assert "]" not in result
@@ -69,21 +77,30 @@ class TestExtractDescription:
 
     def test_strips_images(self):
         """Removes image markdown completely."""
-        content = "Here is an image: ![alt text](image.png) and some more text to reach minimum."
+        content = (
+            "Here is an image: ![alt text](image.png) and some more text to "
+            "reach minimum."
+        )
         result = markdown_utils.extract_description(content)
         assert "![" not in result
         assert "image.png" not in result
 
     def test_strips_code_blocks(self):
         """Removes code blocks."""
-        content = "Some text.\n\n```python\nprint('hello')\n```\n\nMore text here that is long enough to be a paragraph."
+        content = (
+            "Some text.\n\n```python\nprint('hello')\n```\n\nMore text here "
+            "that is long enough to be a paragraph."
+        )
         result = markdown_utils.extract_description(content)
         assert "```" not in result
         assert "print" not in result
 
     def test_strips_headers(self):
         """Removes header markers."""
-        content = "# Header\n\nThis is a paragraph with enough content to be selected as description."
+        content = (
+            "# Header\n\nThis is a paragraph with enough content to be "
+            "selected as description."
+        )
         result = markdown_utils.extract_description(content)
         assert "#" not in result
 
@@ -107,7 +124,10 @@ class TestExtractDescription:
 
     def test_strips_math_blocks(self):
         """Removes math blocks."""
-        content = "The equation $$E = mc^2$$ is famous and describes mass-energy equivalence clearly."
+        content = (
+            "The equation $$E = mc^2$$ is famous and describes mass-energy "
+            "equivalence clearly."
+        )
         result = markdown_utils.extract_description(content)
         assert "$$" not in result
         assert "E = mc^2" not in result
@@ -296,3 +316,73 @@ class TestStripBackticksInWikilinkTargets:
         """Backticks in target-only wikilink are stripped."""
         result = markdown_utils.render_markdown("[[Page#`tmux` setup]]")
         assert 'href="/wiki/Page/#tmux setup"' in result
+
+
+class TestMarkdownConverterCaching:
+    """Tests for Markdown converter reuse."""
+
+    def test_get_markdown_converter_reuses_converter_per_base_url(self, monkeypatch):
+        """Converters are cached per thread and base_url."""
+        markdown_utils._MARKDOWN_CONVERTERS = threading.local()
+        constructor_calls: list[dict[str, object]] = []
+
+        class DummyMarkdown:
+            def __init__(self, *, extensions, extension_configs):
+                constructor_calls.append(
+                    {
+                        "extensions": extensions,
+                        "extension_configs": extension_configs,
+                    }
+                )
+
+            def reset(self):
+                return self
+
+            def convert(self, content):
+                return content
+
+        monkeypatch.setattr(markdown_utils.markdown, "Markdown", DummyMarkdown)
+
+        wiki_converter = markdown_utils.get_markdown_converter("/wiki/")
+        wiki_converter_again = markdown_utils.get_markdown_converter("/wiki/")
+        home_converter = markdown_utils.get_markdown_converter("/")
+
+        assert wiki_converter is wiki_converter_again
+        assert home_converter is not wiki_converter
+        assert len(constructor_calls) == 2
+        assert (
+            constructor_calls[0]["extension_configs"]["mdx_wikilink_plus"]["base_url"]
+            == "/wiki/"
+        )
+        assert (
+            constructor_calls[1]["extension_configs"]["mdx_wikilink_plus"]["base_url"]
+            == "/"
+        )
+
+    def test_render_markdown_resets_cached_converter(self, monkeypatch):
+        """render_markdown resets the cached converter before conversion."""
+        markdown_utils._MARKDOWN_CONVERTERS = threading.local()
+
+        class DummyMarkdown:
+            def __init__(self):
+                self.reset_calls = 0
+                self.convert_calls = 0
+
+            def reset(self):
+                self.reset_calls += 1
+                return self
+
+            def convert(self, content):
+                self.convert_calls += 1
+                return content
+
+        dummy = DummyMarkdown()
+        monkeypatch.setattr(markdown_utils, "get_markdown_converter", lambda _: dummy)
+
+        first = markdown_utils.render_markdown("first")
+        second = markdown_utils.render_markdown("second")
+
+        assert first == "first"
+        assert second == "second"
+        assert dummy.reset_calls == 2
+        assert dummy.convert_calls == 2

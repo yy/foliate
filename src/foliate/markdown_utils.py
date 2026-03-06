@@ -1,6 +1,7 @@
 """Markdown processing utilities for foliate."""
 
 import re
+import threading
 from pathlib import Path
 
 import frontmatter
@@ -74,6 +75,7 @@ _DESCRIPTION_PATTERNS = [
     (re.compile(r"\$[^$]+\$"), ""),
 ]
 _WHITESPACE_PATTERN = re.compile(r"\s+")
+_MARKDOWN_CONVERTERS = threading.local()
 
 
 def extract_description(markdown_content: str, max_length: int = 160) -> str:
@@ -161,23 +163,40 @@ def parse_markdown_file(filepath: Path) -> tuple[dict[str, object], str]:
         return {}, ""
 
 
-def get_markdown_converter(base_url: str) -> markdown.Markdown:
-    """Create a Markdown converter for the given base_url.
-
-    A fresh instance is created each call to avoid sharing mutable state
-    across threads (watch mode runs rebuilds in Timer threads).
-    """
+def _build_extension_configs(base_url: str) -> ExtensionConfigMap:
+    """Build Markdown extension configs for the given base_url."""
 
     extension_configs = {k: v.copy() for k, v in EXTENSION_CONFIGS.items()}
-    extension_configs["mdx_wikilink_plus"] = extension_configs[
-        "mdx_wikilink_plus"
-    ].copy()
     extension_configs["mdx_wikilink_plus"]["base_url"] = base_url
+    return extension_configs
 
-    return markdown.Markdown(
+
+def _get_thread_local_converter_cache() -> dict[str, markdown.Markdown]:
+    cache = getattr(_MARKDOWN_CONVERTERS, "cache", None)
+    if cache is None:
+        cache = {}
+        _MARKDOWN_CONVERTERS.cache = cache
+    return cache
+
+
+def get_markdown_converter(base_url: str) -> markdown.Markdown:
+    """Get a thread-local Markdown converter for the given base_url.
+
+    Markdown converter construction is expensive, especially with the KaTeX
+    extension. Reuse a converter per thread/base_url and reset it before each
+    conversion so watch-mode rebuild threads do not share mutable parser state.
+    """
+    cache = _get_thread_local_converter_cache()
+    cached = cache.get(base_url)
+    if cached is not None:
+        return cached
+
+    converter = markdown.Markdown(
         extensions=MARKDOWN_EXTENSIONS,
-        extension_configs=extension_configs,
+        extension_configs=_build_extension_configs(base_url),
     )
+    cache[base_url] = converter
+    return converter
 
 
 _WIKILINK_BACKTICK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -211,6 +230,7 @@ def render_markdown(content: str, base_url: str = "/wiki/") -> str:
         HTML string
     """
     md = get_markdown_converter(base_url)
+    md.reset()
     content = _strip_backticks_in_wikilink_targets(content)
     html_content = md.convert(content)
 

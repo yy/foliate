@@ -54,9 +54,7 @@ def _coerce_tags(value: object) -> list[str]:
 def _coerce_str(value: object, fallback: str = "") -> str:
     if isinstance(value, str):
         return value
-    if value is None:
-        return fallback
-    return str(value)
+    return fallback
 
 
 @dataclass
@@ -150,7 +148,7 @@ class Page:
         if parsed is not None:
             return parsed
 
-        if file_mtime:
+        if file_mtime is not None:
             try:
                 return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
             except (OSError, OverflowError, ValueError):
@@ -167,7 +165,7 @@ class Page:
         if parsed is not None:
             return parsed
 
-        if file_mtime:
+        if file_mtime is not None:
             try:
                 return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
             except (OSError, OverflowError, ValueError):
