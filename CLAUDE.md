@@ -55,6 +55,7 @@ src/foliate/
 ├── templates.py           # Template management
 ├── cache.py               # Incremental build cache
 ├── assets.py              # Static/user asset handling
+├── page.py                # Typed Page dataclass model
 ├── markdown_utils.py      # Markdown processing utilities
 ├── obsidian_image_size.py # Obsidian ![|width](url) syntax
 ├── deploy.py              # GitHub Pages deployment
@@ -192,6 +193,9 @@ uv run ruff format .
 
 # Lint code
 uv run ruff check .
+
+# Type check
+uv run mypy src/foliate
 
 # Build package (cleans old dist files first)
 make build
