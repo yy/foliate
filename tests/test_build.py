@@ -285,6 +285,39 @@ About page content.
         # Homepage content should be at root, not /wiki/
         assert (vault_path / ".foliate" / "build" / "about" / "index.html").exists()
 
+    def test_search_index_uses_page_base_url_for_homepage_content(self, tmp_path):
+        """search.json should use / URLs for _homepage content."""
+        import json
+
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+"""
+        )
+
+        homepage_dir = vault_path / "_homepage"
+        homepage_dir.mkdir()
+        (homepage_dir / "about.md").write_text("---\npublic: true\n---\nAbout")
+        (vault_path / "Home.md").write_text("---\npublic: true\n---\nWiki home")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        search_file = vault_path / ".foliate" / "build" / "wiki" / "search.json"
+        entries = json.loads(search_file.read_text())
+        by_path = {entry["path"]: entry for entry in entries}
+
+        assert by_path["about"]["url"] == "/about/"
+        assert by_path["Home"]["url"] == "/wiki/Home/"
+
     def test_home_page_in_homepage_dir_does_not_render_under_wiki(self, tmp_path):
         """Home page from _homepage should only render at root location."""
         vault_path = tmp_path / "vault"

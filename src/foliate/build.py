@@ -381,6 +381,7 @@ def generate_search_index(
     search_data = []
     for page in public_pages:
         content_preview = page.body[:500] if page.body else ""
+        page_base_url = page.base_url or base_url
 
         published_str = page.published_at.isoformat() if page.published_at else ""
 
@@ -388,7 +389,7 @@ def generate_search_index(
             {
                 "title": page.title,
                 "path": page.path,
-                "url": f"{base_url}{page.path}/",
+                "url": f"{page_base_url}{page.path}/",
                 "content": content_preview,
                 "published": published_str,
                 "tags": page.tags,
