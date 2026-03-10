@@ -283,11 +283,12 @@ def deploy_github_pages(
         rsync_result = subprocess.run(
             rsync_args,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     else:
         # Always show output in non-dry-run so user sees what's happening.
-        rsync_result = subprocess.run(rsync_args, text=True)
+        rsync_result = subprocess.run(rsync_args, encoding="utf-8", errors="replace")
 
     if rsync_result.returncode != 0:
         error("rsync failed")
