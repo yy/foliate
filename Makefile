@@ -1,4 +1,7 @@
-.PHONY: build clean test ci publish
+.PHONY: build clean sync-dev test ci publish
+
+sync-dev:
+	uv sync --frozen --extra dev
 
 build: clean
 	uv build
@@ -6,10 +9,10 @@ build: clean
 clean:
 	rm -rf dist/*.whl dist/*.tar.gz
 
-test:
+test: sync-dev
 	uv run pytest
 
-ci:
+ci: sync-dev
 	uv run mypy src/foliate
 	uv run pytest -q
 	uv build
