@@ -318,6 +318,56 @@ class TestStripBackticksInWikilinkTargets:
         assert 'href="/wiki/Page/#tmux setup"' in result
 
 
+class TestConfigureExtensions:
+    """Tests for configure_extensions() and nl2br support."""
+
+    def setup_method(self):
+        """Reset extensions state before each test."""
+        markdown_utils.configure_extensions(nl2br=False)
+
+    def teardown_method(self):
+        """Reset extensions state after each test."""
+        markdown_utils.configure_extensions(nl2br=False)
+
+    def test_nl2br_enabled_converts_newlines(self):
+        """Single newlines become <br> when nl2br is enabled."""
+        markdown_utils.configure_extensions(nl2br=True)
+        result = markdown_utils.render_markdown("line one\nline two")
+        assert "<br" in result
+
+    def test_nl2br_disabled_collapses_newlines(self):
+        """Single newlines collapse to spaces when nl2br is disabled."""
+        markdown_utils.configure_extensions(nl2br=False)
+        result = markdown_utils.render_markdown("line one\nline two")
+        assert "<br" not in result
+        assert "line one" in result
+        assert "line two" in result
+
+    def test_configure_clears_converter_cache(self):
+        """Calling configure_extensions clears the converter cache."""
+        # Build a cached converter
+        markdown_utils.get_markdown_converter("/wiki/")
+        cache = markdown_utils._get_thread_local_converter_cache()
+        assert len(cache) > 0
+
+        # Configure should clear it
+        markdown_utils.configure_extensions(nl2br=True)
+        cache = markdown_utils._get_thread_local_converter_cache()
+        assert len(cache) == 0
+
+    def test_get_extensions_includes_nl2br_when_enabled(self):
+        """_get_extensions includes 'nl2br' at front when enabled."""
+        markdown_utils.configure_extensions(nl2br=True)
+        exts = markdown_utils._get_extensions()
+        assert exts[0] == "nl2br"
+
+    def test_get_extensions_excludes_nl2br_when_disabled(self):
+        """_get_extensions does not include 'nl2br' when disabled."""
+        markdown_utils.configure_extensions(nl2br=False)
+        exts = markdown_utils._get_extensions()
+        assert "nl2br" not in exts
+
+
 class TestMarkdownConverterCaching:
     """Tests for Markdown converter reuse."""
 

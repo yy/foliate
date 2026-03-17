@@ -221,6 +221,7 @@ class BuildConfig:
     wiki_prefix: str = "wiki"  # URL prefix for wiki content (e.g., /wiki/PageName/)
     home_page: str = "Home"  # Wiki page that shows recent pages list
     incremental: bool = True
+    nl2br: bool = False  # Convert single newlines to <br> (Obsidian-style)
 
 
 @dataclass

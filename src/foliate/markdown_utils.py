@@ -76,6 +76,28 @@ _DESCRIPTION_PATTERNS = [
 ]
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 _MARKDOWN_CONVERTERS = threading.local()
+_NL2BR_ENABLED = False
+
+
+def configure_extensions(nl2br: bool = False) -> None:
+    """Configure markdown extensions and clear converter caches.
+
+    Call this at the start of a build to set up extensions based on config.
+    Clears the thread-local converter cache so converters are rebuilt.
+    """
+    global _NL2BR_ENABLED  # noqa: PLW0603
+    _NL2BR_ENABLED = nl2br
+    # Clear thread-local converter cache so converters pick up new extensions
+    cache = getattr(_MARKDOWN_CONVERTERS, "cache", None)
+    if cache is not None:
+        cache.clear()
+
+
+def _get_extensions() -> list[str]:
+    """Return the current extensions list, optionally including nl2br."""
+    if _NL2BR_ENABLED:
+        return ["nl2br", *MARKDOWN_EXTENSIONS]
+    return list(MARKDOWN_EXTENSIONS)
 
 
 def extract_description(markdown_content: str, max_length: int = 160) -> str:
@@ -192,7 +214,7 @@ def get_markdown_converter(base_url: str) -> markdown.Markdown:
         return cached
 
     converter = markdown.Markdown(
-        extensions=MARKDOWN_EXTENSIONS,
+        extensions=_get_extensions(),
         extension_configs=_build_extension_configs(base_url),
     )
     cache[base_url] = converter

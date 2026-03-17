@@ -42,6 +42,10 @@ home_page = "Home"
 # Enable incremental builds (only rebuild changed files)
 incremental = true
 
+# Convert single newlines to <br> tags (matches Obsidian behavior)
+# Useful for content with line-break-sensitive formatting (e.g., publication lists)
+nl2br = false
+
 
 [visibility]
 # Foliate uses a two-tiered visibility system:

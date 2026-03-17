@@ -554,6 +554,11 @@ def build(
     if incremental is None:
         incremental = config.build.incremental
 
+    # Configure markdown extensions (e.g., nl2br) before any rendering
+    from .markdown_utils import configure_extensions
+
+    configure_extensions(nl2br=config.build.nl2br)
+
     vault_path = config.vault_path
     if not vault_path:
         error("No vault path configured")
