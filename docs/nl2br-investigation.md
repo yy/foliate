@@ -6,22 +6,22 @@ Foliate uses Python-Markdown without the `nl2br` extension. This means single ne
 
 Obsidian, however, treats single newlines as line breaks by default ("Strict line breaks" is off by default). This creates a rendering mismatch: content that looks correct in Obsidian (each line on its own) renders as a single run-on line on the foliate site.
 
-### Concrete example: publication lists
+### Concrete example: structured entries
 
-In `_homepage/research.md`, publication entries look like this in the source:
+Content with line-break-sensitive formatting (e.g., publication lists, addresses, or multi-field entries) looks like this in the source:
 
 ```markdown
-**Adaptive cut reveals multiscale complexity in networks**
-Louis Boucherie, Yong-Yeol Ahn, Sune Lehmann
-_Submitted_ (2025)
-[arXiv](https://arxiv.org/abs/2512.08741)
+**Title of the entry**
+Author One, Author Two
+_Journal_ (2025)
+[Link](https://example.com)
 ```
 
 In Obsidian, each field appears on its own line. In foliate, they collapse into one line unless the author adds trailing spaces (`  `) or backslashes (`\`) at the end of each line. Trailing spaces are invisible, fragile (editors and tools strip them), and a constant source of formatting bugs.
 
-## Proposed solution
+## Solution
 
-Add a `nl2br` config toggle in `config.toml` and conditionally enable the built-in `nl2br` Python-Markdown extension. This keeps the change user-controllable, consistent with foliate's "flexible, minimal opinions" design.
+A `nl2br` config toggle in `config.toml` conditionally enables the built-in `nl2br` Python-Markdown extension. This keeps the change user-controllable, consistent with foliate's "flexible, minimal opinions" design.
 
 ```toml
 [build]
@@ -42,12 +42,7 @@ Any page where the author intentionally uses single newlines as "soft wraps" (ex
 
 Specific things to check:
 
-1. **Long paragraphs with hard-wrapped lines** — if any `.md` files wrap prose at 80 columns using single newlines, those would now render with line breaks mid-sentence. Search for this pattern:
-   ```bash
-   # Find paragraphs with mid-sentence line breaks (lines that don't end with punctuation or markup)
-   # -U enables multiline mode so \n matches across lines
-   rg -lU '\w\n\w' --type md
-   ```
+1. **Long paragraphs with hard-wrapped lines** — if any `.md` files wrap prose at 80 columns using single newlines, those would now render with line breaks mid-sentence.
 
 2. **List items** — multi-line list items may get extra `<br>` tags. Test lists with continuation lines.
 
@@ -61,35 +56,14 @@ Specific things to check:
 
 ### Testing approach
 
-1. Build the site without `nl2br` and capture the output:
-   ```bash
-   cd ~/git/yyiki-pages
-   uv run --project ~/git/foliate foliate build --force
-   cp -r .foliate/build .foliate/build-before
-   ```
-
-2. Enable `nl2br` in foliate and rebuild:
-   ```bash
-   uv run --project ~/git/foliate foliate build --force
-   ```
-
-3. Diff the HTML output to see what changed:
-   ```bash
-   diff -rq .foliate/build-before .foliate/build
-   # Then inspect specific changed files
-   ```
-
-4. Spot-check key pages:
-   - `_homepage/research.md` — publication entries should now render correctly without trailing spaces
-   - A few regular wiki pages with prose paragraphs — check for unwanted line breaks
-   - Pages with lists, tables, code blocks — verify no regressions
+1. Build the site without `nl2br` and capture the output.
+2. Enable `nl2br = true` in `.foliate/config.toml` and rebuild with `--force`.
+3. Diff the HTML output to see what changed.
+4. Spot-check key pages: structured entries should render correctly; prose paragraphs should not have unwanted line breaks; lists, tables, and code blocks should have no regressions.
 
 ### Alternative: per-page opt-in
 
-If `nl2br` causes too many regressions globally, consider:
-
-- A per-page frontmatter flag (e.g., `nl2br: true`) that enables the extension only for specific pages. This would require a small code change in `markdown_utils.py` to conditionally include the extension.
-- Or a CSS-based approach using `white-space: pre-line` on specific sections, though this only works if the parser preserves newlines in the HTML output (it doesn't currently).
+If `nl2br` causes too many regressions globally, consider a per-page frontmatter flag (e.g., `nl2br: true`) that enables the extension only for specific pages. This would require a small code change in `markdown_utils.py` to conditionally include the extension per render call.
 
 ## Decision
 
