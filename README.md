@@ -7,8 +7,10 @@
 
 ```bash
 cd my-vault
-uvx foliate init   # Create .foliate/config.toml
-uvx foliate build  # Generate site to .foliate/build/
+uvx foliate init    # Create .foliate/config.toml
+uvx foliate build   # Generate site to .foliate/build/
+uvx foliate watch   # Live preview with auto-rebuild
+uvx foliate deploy  # Deploy to GitHub Pages
 ```
 
 ## Why Foliate?
