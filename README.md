@@ -1,6 +1,9 @@
-# Foliate
-
-A static site generator for your markdown vault. A flexible, configurable alternative to Obsidian Publish.
+<p align="center">
+  <img src="foliate-logo.png" alt="Foliate" width="400">
+</p>
+<p align="center">
+  A static site generator for your markdown vault. A flexible, configurable alternative to Obsidian Publish.
+</p>
 
 ```bash
 cd my-vault
