@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-03-20
 
 ### Added
 - **Slugified URLs**: Replace spaces with hyphens in URLs for cleaner links (e.g., `/wiki/My-Page/` instead of `/wiki/My%20Page/`). Legacy space-based URLs get lightweight redirect stubs with canonical tags. Enable with `slugify_urls = true` in `[build]` config (default for new sites via `foliate init`).
