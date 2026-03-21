@@ -72,6 +72,23 @@ class TestPageFromMarkdown:
         assert page.description != "False"
         assert page.image == "/assets/image.png"
 
+    def test_normalizes_assets_image_paths_and_ignores_titles(self):
+        titled = Page.from_markdown(
+            "notes/titled",
+            {},
+            '![alt](image.png "Title")',
+            render_html=False,
+        )
+        asset_path = Page.from_markdown(
+            "notes/asset",
+            {},
+            "![alt](assets/img.png)",
+            render_html=False,
+        )
+
+        assert titled.image == "/assets/image.png"
+        assert asset_path.image == "/assets/img.png"
+
     def test_coerces_string_tags_and_ignores_invalid_tag_values(self):
         page = Page.from_markdown(
             "notes/test",

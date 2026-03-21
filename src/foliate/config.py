@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, TypeVar
 
+from .markdown_utils import slugify_path
+
 T = TypeVar("T")
 
 
@@ -137,22 +139,33 @@ def _require_section_dict(
     return section_data
 
 
-def _default_nav_items() -> list["NavItem"]:
+def _default_nav_items(
+    wiki_base_url: str = "/wiki/",
+    home_page: str = "Home",
+    slugify_urls: bool = False,
+) -> list["NavItem"]:
+    wiki_home = slugify_path(home_page) if slugify_urls else home_page
     return [
         NavItem(url="/about/", label="About"),
-        NavItem(url="/wiki/Home/", label="Wiki"),
+        NavItem(url=f"{wiki_base_url}{wiki_home}/", label="Wiki"),
     ]
 
 
-def _load_nav_items(data: dict[str, object], config_path: Path) -> list["NavItem"]:
+def _load_nav_items(
+    data: dict[str, object],
+    config_path: Path,
+    wiki_base_url: str = "/wiki/",
+    home_page: str = "Home",
+    slugify_urls: bool = False,
+) -> list["NavItem"]:
     """Load and validate nav items."""
     nav_data = _require_section_dict(data, "nav", config_path)
     if nav_data is None:
-        return _default_nav_items()
+        return _default_nav_items(wiki_base_url, home_page, slugify_urls)
 
     items = nav_data.get("items")
     if items is None:
-        return _default_nav_items()
+        return _default_nav_items(wiki_base_url, home_page, slugify_urls)
     if not isinstance(items, list):
         raise TypeError(
             f"Config section [nav].items in {config_path} must be a list, "
@@ -395,7 +408,13 @@ class Config:
                 config_path=config_path,
             )
 
-        config.nav = _load_nav_items(data, config_path)
+        config.nav = _load_nav_items(
+            data,
+            config_path,
+            config.base_urls["wiki"],
+            config.build.home_page,
+            config.build.slugify_urls,
+        )
 
         return config
 

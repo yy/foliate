@@ -115,6 +115,24 @@ def get_output_path(
     return build_dir / wiki_dir_name / output_path / "index.html"
 
 
+def _resolve_redirect_target(
+    target_path: str,
+    public_pages: list[Page],
+    fallback_base_url: str,
+    slugify: bool,
+) -> tuple[str, str]:
+    """Resolve a configured redirect target to a built page URL when possible."""
+    target_page = next(
+        (page for page in public_pages if page.path == target_path),
+        None,
+    )
+    if target_page is not None:
+        return target_page.url, target_page.title
+
+    url_path = slugify_path(target_path) if slugify else target_path
+    return f"{fallback_base_url}{url_path}/", target_path
+
+
 def render_page_to_file(
     page: Page,
     build_dir: Path,
@@ -484,12 +502,11 @@ def generate_search_index(
 def generate_sitemap(
     build_dir: Path,
     public_pages: list[Page],
-    base_url: str = "/wiki/",
     slugify: bool = False,
 ) -> None:
     """Generate sitemap.txt with all public page URLs."""
     sitemap_lines = [
-        f"{base_url}{slugify_path(page.path) if slugify else page.path}/"
+        f"{page.base_url}{slugify_path(page.path) if slugify else page.path}/"
         for page in public_pages
     ]
     (build_dir / "sitemap.txt").write_text("\n".join(sitemap_lines), encoding="utf-8")
@@ -505,32 +522,42 @@ def generate_site_files(
     """Generate site-wide files: home redirect, wiki redirect, search.json, sitemap."""
     wiki_base_url = config.base_urls["wiki"]
     wiki_dir_name = config.build.wiki_prefix.strip("/")
+    slugify = config.build.slugify_urls
 
     # Generate home page redirect
-    home_url = f"/{config.build.home_redirect.lower()}/"
+    home_url, home_title = _resolve_redirect_target(
+        config.build.home_redirect,
+        public_pages,
+        "/",
+        slugify,
+    )
     redirect_template = env.get_template("index.html")
     home_html = redirect_template.render(
         redirect_url=home_url,
-        redirect_title=config.build.home_redirect.title(),
+        redirect_title=home_title,
     )
     (build_dir / "index.html").write_text(home_html, encoding="utf-8")
 
     # Generate wiki root redirect (only if wiki_prefix is set)
     if wiki_dir_name:
-        wiki_home_url = f"/{wiki_dir_name}/{config.build.home_page}/"
+        wiki_home_url, wiki_home_title = _resolve_redirect_target(
+            config.build.home_page,
+            public_pages,
+            wiki_base_url,
+            slugify,
+        )
         wiki_redirect_html = redirect_template.render(
             redirect_url=wiki_home_url,
-            redirect_title=config.build.home_page,
+            redirect_title=wiki_home_title,
         )
         wiki_dir = build_dir / wiki_dir_name
         wiki_dir.mkdir(parents=True, exist_ok=True)
         (wiki_dir / "index.html").write_text(wiki_redirect_html, encoding="utf-8")
 
-    slugify = config.build.slugify_urls
     generate_search_index(
         build_dir, public_pages, wiki_base_url, wiki_dir_name, slugify=slugify
     )
-    generate_sitemap(build_dir, public_pages, wiki_base_url, slugify=slugify)
+    generate_sitemap(build_dir, public_pages, slugify=slugify)
 
 
 # ---------------------------------------------------------------------------
@@ -645,7 +672,9 @@ def build(
     from .markdown_utils import configure_extensions
 
     configure_extensions(
-        nl2br=config.build.nl2br, slugify_urls=config.build.slugify_urls
+        nl2br=config.build.nl2br,
+        slugify_urls=config.build.slugify_urls,
+        wiki_base_url=config.base_urls["wiki"],
     )
 
     vault_path = config.vault_path

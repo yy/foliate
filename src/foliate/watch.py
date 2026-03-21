@@ -51,8 +51,19 @@ class FoliateEventHandler(FileSystemEventHandler):
             return
 
         # Check for ignored folders from config
+        normalized_vault_path = ""
+        if self.config.vault_path:
+            normalized_vault_path = str(self.config.vault_path).replace("\\", "/")
+
+        relative_path = normalized_path.lstrip("/")
+        if normalized_vault_path:
+            prefix = normalized_vault_path.rstrip("/") + "/"
+            if normalized_path.startswith(prefix):
+                relative_path = normalized_path[len(prefix) :]
+
+        path_parts = [part for part in relative_path.split("/") if part]
         for folder in self.config.build.ignored_folders:
-            if f"/{folder}/" in normalized_path:
+            if folder in path_parts[:-1]:
                 return
 
         # Check if it's a relevant file type

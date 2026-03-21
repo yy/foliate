@@ -6,6 +6,7 @@ from pathlib import Path
 
 import frontmatter
 import markdown
+from bs4 import BeautifulSoup
 
 type ExtensionConfigMap = dict[str, dict[str, object]]
 
@@ -79,6 +80,7 @@ _MULTI_HYPHEN_RE = re.compile(r"-{2,}")
 _MARKDOWN_CONVERTERS = threading.local()
 _NL2BR_ENABLED = False
 _SLUGIFY_URLS_ENABLED = False
+_WIKI_BASE_URL = "/wiki/"
 
 
 def slugify_path(path: str) -> str:
@@ -96,15 +98,20 @@ def slugify_path(path: str) -> str:
     return "/".join(_MULTI_HYPHEN_RE.sub("-", part.replace(" ", "-")) for part in parts)
 
 
-def configure_extensions(nl2br: bool = False, slugify_urls: bool = False) -> None:
+def configure_extensions(
+    nl2br: bool = False,
+    slugify_urls: bool = False,
+    wiki_base_url: str = "/wiki/",
+) -> None:
     """Configure markdown extensions and clear converter caches.
 
     Call this at the start of a build to set up extensions based on config.
     Clears the thread-local converter cache so converters are rebuilt.
     """
-    global _NL2BR_ENABLED, _SLUGIFY_URLS_ENABLED  # noqa: PLW0603
+    global _NL2BR_ENABLED, _SLUGIFY_URLS_ENABLED, _WIKI_BASE_URL  # noqa: PLW0603
     _NL2BR_ENABLED = nl2br
     _SLUGIFY_URLS_ENABLED = slugify_urls
+    _WIKI_BASE_URL = wiki_base_url
     # Clear thread-local converter cache so converters pick up new extensions
     cache = getattr(_MARKDOWN_CONVERTERS, "cache", None)
     if cache is not None:
@@ -170,10 +177,13 @@ def extract_first_image(markdown_content: str) -> str | None:
     if not markdown_content:
         return None
 
-    # Match markdown images: ![alt](url)
-    match = re.search(r"!\[[^\]]*\]\(([^\)]+)\)", markdown_content)
+    # Match markdown images: ![alt](url "optional title")
+    match = re.search(r"!\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)", markdown_content)
     if match:
-        return match.group(1)
+        url = match.group(1).strip()
+        if url.startswith("<") and url.endswith(">"):
+            url = url[1:-1]
+        return url
 
     # Match HTML images: <img src="url">
     match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', markdown_content)
@@ -281,7 +291,9 @@ def render_markdown(content: str, base_url: str = "/wiki/") -> str:
 
     # Fix wikilinks from homepage content to wiki pages
     if base_url == "/":
-        html_content = fix_homepage_to_wiki_links(html_content)
+        html_content = fix_homepage_to_wiki_links(
+            html_content, wiki_base_url=_WIKI_BASE_URL
+        )
 
     return html_content
 
@@ -291,44 +303,30 @@ def process_asset_paths(html_content: str) -> str:
     return re.sub(r"""((?:src|href)=["'])assets/""", r"\1/assets/", html_content)
 
 
-def fix_homepage_to_wiki_links(html_content: str) -> str:
+def fix_homepage_to_wiki_links(
+    html_content: str,
+    wiki_base_url: str = "/wiki/",
+) -> str:
     """Fix wikilinks from homepage content to point to wiki pages.
 
-    Links starting with / that aren't wiki/, assets/, or external URLs
-    get prefixed with /wiki to point to the wiki section.
+    Only wikilink anchors are rewritten. Regular absolute links like /about/
+    should continue to point to the site root.
     """
-    skip_prefixes = (
-        "wiki/",
-        "assets/",
-        "static/",
-        "http://",
-        "https://",
-        "#",
-        "mailto:",
-    )
+    normalized_wiki_base = wiki_base_url.rstrip("/")
+    soup = BeautifulSoup(html_content, "html.parser")
 
-    def should_be_wiki_link(path: str) -> bool:
-        clean_path = path.strip("/")
-        if not clean_path:
-            return False
-        if clean_path.startswith(skip_prefixes):
-            return False
-        # Skip paths with file extensions (e.g., feed.xml, robots.txt)
-        if "." in clean_path.split("/")[-1]:
-            return False
-        return True
+    for link in soup.find_all("a", class_="wikilink"):
+        href = link.get("href")
+        if (
+            not isinstance(href, str)
+            or not href.startswith("/")
+            or href.startswith("//")
+        ):
+            continue
+        if not normalized_wiki_base:
+            continue
+        if href == normalized_wiki_base or href.startswith(normalized_wiki_base + "/"):
+            continue
+        link["href"] = f"{normalized_wiki_base}{href}"
 
-    def replace_link(match: re.Match[str]) -> str:
-        link_path = match.group("double_quoted_path") or match.group(
-            "single_quoted_path"
-        )
-        quote = '"' if match.group("double_quoted_path") else "'"
-        if should_be_wiki_link(link_path):
-            return f"href={quote}/wiki{link_path}{quote}"
-        return match.group(0)
-
-    return re.sub(
-        r"""href="(?P<double_quoted_path>/[^"]*?)"|href='(?P<single_quoted_path>/[^']*?)'""",
-        replace_link,
-        html_content,
-    )
+    return str(soup)

@@ -188,6 +188,22 @@ items = [
         assert config.nav[1].logo == "/logo.svg"
         assert config.nav[1].logo_alt == "Site logo"
 
+    def test_default_nav_uses_custom_wiki_prefix(self, tmp_path):
+        """Default nav should follow the configured wiki prefix."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[build]
+wiki_prefix = "pages"
+"""
+        )
+
+        config = Config.load(config_path)
+
+        assert [item.url for item in config.nav] == ["/about/", "/pages/Home/"]
+
 
 class TestConfigValidation:
     """Tests for config validation and warnings."""

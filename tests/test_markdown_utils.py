@@ -161,6 +161,11 @@ class TestExtractFirstImage:
         content = "![first](first.png) and ![second](second.png)"
         assert markdown_utils.extract_first_image(content) == "first.png"
 
+    def test_strips_optional_markdown_image_title(self):
+        """Ignores optional titles when extracting image destinations."""
+        content = '![alt](image.png "Title")'
+        assert markdown_utils.extract_first_image(content) == "image.png"
+
     def test_no_image_found(self):
         """Returns None when no image found."""
         content = "Just some text without any images"
@@ -250,22 +255,22 @@ class TestFixHomepageToWikiLinks:
     """Tests for fix_homepage_to_wiki_links() function."""
 
     def test_converts_wiki_links(self):
-        """Converts internal links to wiki paths."""
-        html = '<a href="/Notes/Ideas/">Notes</a>'
+        """Converts wikilink anchors to wiki paths."""
+        html = '<a class="wikilink" href="/Notes/Ideas/">Notes</a>'
         result = markdown_utils.fix_homepage_to_wiki_links(html)
-        assert result == '<a href="/wiki/Notes/Ideas/">Notes</a>'
+        assert result == '<a class="wikilink" href="/wiki/Notes/Ideas/">Notes</a>'
 
     def test_preserves_wiki_links(self):
         """Doesn't double-prefix existing wiki links."""
-        html = '<a href="/wiki/Notes/">Notes</a>'
+        html = '<a class="wikilink" href="/wiki/Notes/">Notes</a>'
         result = markdown_utils.fix_homepage_to_wiki_links(html)
-        assert result == '<a href="/wiki/Notes/">Notes</a>'
+        assert result == '<a class="wikilink" href="/wiki/Notes/">Notes</a>'
 
-    def test_preserves_asset_links(self):
-        """Preserves asset links."""
-        html = '<a href="/assets/doc.pdf">Download</a>'
+    def test_preserves_regular_absolute_links(self):
+        """Regular root links should not be rewritten to wiki paths."""
+        html = '<a href="/about/">About</a>'
         result = markdown_utils.fix_homepage_to_wiki_links(html)
-        assert result == '<a href="/assets/doc.pdf">Download</a>'
+        assert result == '<a href="/about/">About</a>'
 
     def test_preserves_external_links(self):
         """Preserves links starting with http/https."""
@@ -279,17 +284,19 @@ class TestFixHomepageToWikiLinks:
         result = markdown_utils.fix_homepage_to_wiki_links(html)
         assert result == '<a href="#section">Jump</a>'
 
-    def test_converts_wiki_links_single_quotes(self):
-        """Converts internal links with single-quoted href attributes."""
-        html = "<a href='/Notes/Ideas/'>Notes</a>"
-        result = markdown_utils.fix_homepage_to_wiki_links(html)
-        assert result == "<a href='/wiki/Notes/Ideas/'>Notes</a>"
+    def test_uses_custom_wiki_prefix(self):
+        """Converts wikilinks using the configured wiki base URL."""
+        html = '<a class="wikilink" href="/Notes/Ideas/">Notes</a>'
+        result = markdown_utils.fix_homepage_to_wiki_links(
+            html, wiki_base_url="/pages/"
+        )
+        assert result == '<a class="wikilink" href="/pages/Notes/Ideas/">Notes</a>'
 
-    def test_converts_wiki_links_with_apostrophe(self):
-        """Converts internal links containing apostrophes in path."""
-        html = '<a href="/John\'s-Note/">Note</a>'
-        result = markdown_utils.fix_homepage_to_wiki_links(html)
-        assert result == '<a href="/wiki/John\'s-Note/">Note</a>'
+    def test_empty_wiki_prefix_leaves_wikilinks_at_root(self):
+        """Root wiki mode should not add an extra prefix."""
+        html = '<a class="wikilink" href="/Notes/Ideas/">Notes</a>'
+        result = markdown_utils.fix_homepage_to_wiki_links(html, wiki_base_url="/")
+        assert result == '<a class="wikilink" href="/Notes/Ideas/">Notes</a>'
 
 
 class TestStripBackticksInWikilinkTargets:

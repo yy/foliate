@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from foliate.cache import save_build_cache
 from foliate.config import Config, DeployConfig
 from foliate.deploy import deploy_github_pages, is_build_stale
 
@@ -203,6 +204,27 @@ class TestIsBuildStale:
             result = is_build_stale(config)
             assert result is True
 
+    def test_returns_true_when_cached_public_page_was_deleted(self):
+        """Should return True when a previously built public page was deleted."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            build_dir = vault / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html>Test</html>")
+
+            cache_dir = vault / ".foliate" / "cache"
+            cache_dir.mkdir(parents=True)
+            save_build_cache(
+                cache_dir / ".build_cache",
+                {str(vault / "deleted.md"): time.time()},
+            )
+
+            result = is_build_stale(config)
+            assert result is True
+
 
 class TestDeployGithubPages:
     """Tests for deploy_github_pages function."""
@@ -262,7 +284,6 @@ class TestDeployGithubPages:
 
             # The target should be resolved relative to vault_path
             # This test verifies the logic without actually running deploy
-            build_dir = config.get_build_dir()
             target = Path(config.deploy.target)
 
             if not target.is_absolute() and config.vault_path:
@@ -469,6 +490,37 @@ class TestDeployGithubPages:
                 result = deploy_github_pages(config)
 
                 assert result is False
+
+    @patch("foliate.deploy.subprocess.run")
+    def test_aborts_on_non_benign_git_pull_failure(self, mock_run):
+        """Unexpected git pull failures should stop deployment."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html></html>")
+
+            target_dir = Path(tmpdir) / "target"
+            target_dir.mkdir()
+            (target_dir / ".git").mkdir()
+            config.deploy = DeployConfig(target=str(target_dir))
+
+            pull_failure = MagicMock(
+                returncode=1,
+                stdout="",
+                stderr=(
+                    "fatal: could not read Username for "
+                    "'https://github.com': terminal prompts disabled"
+                ),
+            )
+            mock_run.return_value = pull_failure
+
+            result = deploy_github_pages(config)
+
+            assert result is False
+            mock_run.assert_called_once()
 
 
 class TestDeployConfig:

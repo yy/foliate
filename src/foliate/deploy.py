@@ -4,6 +4,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from .cache import BUILD_CACHE_FILE, load_build_cache
 from .config import Config
 
 
@@ -53,10 +54,66 @@ def is_build_stale(config: Config) -> bool | None:
     if build_mtime == 0:
         return None
 
+    cache_file = config.get_cache_dir() / BUILD_CACHE_FILE
+    build_cache = load_build_cache(cache_file)
+    if build_cache and _did_public_source_set_change(config, build_cache):
+        return True
+
     # Get the most recent source modification time
     source_mtime = _get_newest_source_mtime(config)
 
     return source_mtime > build_mtime
+
+
+def _did_public_source_set_change(config: Config, build_cache: dict) -> bool:
+    """Return True when cached public source files no longer match the vault."""
+    from .build import is_path_ignored
+    from .cache import CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY
+    from .markdown_utils import parse_markdown_file
+
+    vault_path = config.vault_path
+    if not vault_path:
+        return False
+
+    cached_sources = {
+        path
+        for path in build_cache
+        if path not in {CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY}
+    }
+    if not cached_sources:
+        return False
+
+    current_public_sources: set[str] = set()
+    for source_file in vault_path.rglob("*.md"):
+        if not source_file.is_file():
+            continue
+
+        try:
+            rel_path = source_file.relative_to(vault_path)
+            if rel_path.parts and rel_path.parts[0] == ".foliate":
+                continue
+        except ValueError:
+            continue
+
+        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
+            continue
+
+        meta, _ = parse_markdown_file(source_file)
+        if meta.get("public", False):
+            current_public_sources.add(str(source_file))
+
+    return current_public_sources != cached_sources
+
+
+def _is_benign_pull_failure(stderr: str) -> bool:
+    """Allow deployment to continue when git pull cannot run harmlessly."""
+    normalized = stderr.lower()
+    benign_messages = (
+        "no tracking information",
+        "no upstream configured",
+        "there is no tracking information",
+    )
+    return any(message in normalized for message in benign_messages)
 
 
 def _get_newest_mtime_in_dir(directory: Path) -> float:
@@ -251,9 +308,12 @@ def deploy_github_pages(
             text=True,
         )
         if pull_result.returncode != 0:
-            # Pull failed - might be a new repo or no remote, which is fine
-            if "no tracking information" not in pull_result.stderr.lower():
-                warning(f"git pull failed: {pull_result.stderr.strip()}")
+            stderr = pull_result.stderr.strip()
+            if _is_benign_pull_failure(stderr):
+                warning(f"git pull skipped: {stderr}")
+            else:
+                error(f"git pull failed: {stderr}")
+                return False
 
     # Build rsync command
     rsync_args = [

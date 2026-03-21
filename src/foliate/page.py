@@ -105,8 +105,12 @@ class Page:
 
         image_value = _coerce_str(meta.get("image"))
         image = image_value or extract_first_image(markdown_content)
-        if image and not image.startswith(("/", "http://", "https://")):
-            image = f"/assets/{image}"
+        if image:
+            image = image.strip()
+            if image.startswith("assets/"):
+                image = f"/{image}"
+            elif not image.startswith(("/", "http://", "https://")):
+                image = f"/assets/{image}"
 
         file_modified: str | None = None
         file_mtime: float | None = None

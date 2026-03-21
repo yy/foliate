@@ -2,6 +2,7 @@
 
 import threading
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -82,6 +83,18 @@ class TestFoliateEventHandler:
 
         handler.on_any_event(event)
         assert handler.pending_changes == []
+
+    def test_does_not_ignore_when_vault_path_contains_ignored_folder_name(self):
+        """Only folders inside the vault should be ignored."""
+        config = Config()
+        config.vault_path = Path("/tmp/_private/vault")
+        config.build.ignored_folders = ["_private"]
+        handler = FoliateEventHandler(config, Mock(), debounce_seconds=0.05)
+
+        event = FileModifiedEvent("/tmp/_private/vault/notes/page.md")
+        handler.on_any_event(event)
+
+        assert "/tmp/_private/vault/notes/page.md" in handler.pending_changes
 
     def test_ignores_irrelevant_extensions(self, handler):
         """Should ignore files with irrelevant extensions."""

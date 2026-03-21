@@ -318,6 +318,30 @@ url = "https://test.com"
         assert by_path["about"]["url"] == "/about/"
         assert by_path["Home"]["url"] == "/wiki/Home/"
 
+    def test_sitemap_uses_page_base_url_for_homepage_content(self, tmp_path):
+        """sitemap.txt should use / URLs for _homepage content."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[site]\nname = 'Test Site'\n")
+
+        homepage_dir = vault_path / "_homepage"
+        homepage_dir.mkdir()
+        (homepage_dir / "about.md").write_text("---\npublic: true\n---\nAbout")
+        (vault_path / "Home.md").write_text("---\npublic: true\n---\nWiki home")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        sitemap_file = vault_path / ".foliate" / "build" / "sitemap.txt"
+        sitemap_lines = sitemap_file.read_text().splitlines()
+
+        assert "/about/" in sitemap_lines
+        assert "/wiki/Home/" in sitemap_lines
+
     def test_home_page_in_homepage_dir_does_not_render_under_wiki(self, tmp_path):
         """Home page from _homepage should only render at root location."""
         vault_path = tmp_path / "vault"
@@ -503,6 +527,61 @@ This is the index.
 
         content = wiki_index.read_text()
         assert "/wiki/Index/" in content
+
+    def test_home_redirect_uses_actual_slugified_page_url(self, tmp_path):
+        """Root redirect should follow built URLs instead of lowercasing raw config."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+home_redirect = "My Page"
+slugify_urls = true
+"""
+        )
+
+        (vault_path / "My Page.md").write_text("---\npublic: true\n---\nHello")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        root_index = vault_path / ".foliate" / "build" / "index.html"
+        assert "/wiki/My-Page/" in root_index.read_text()
+
+    def test_wiki_root_redirect_uses_actual_page_url(self, tmp_path):
+        """Wiki root redirect should point to the built page URL."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+home_page = "about"
+"""
+        )
+
+        homepage_dir = vault_path / "_homepage"
+        homepage_dir.mkdir()
+        (homepage_dir / "about.md").write_text("---\npublic: true\n---\nAbout")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        wiki_index = vault_path / ".foliate" / "build" / "wiki" / "index.html"
+        assert "/about/" in wiki_index.read_text()
 
     def test_no_wiki_root_redirect_when_empty_prefix(self, tmp_path):
         """No wiki root redirect when wiki_prefix is empty."""
