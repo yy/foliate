@@ -11,6 +11,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from .config import Config
+from .markdown_utils import slugify_path  # noqa: F401
 from .page import Page
 
 
@@ -45,6 +46,7 @@ def sanitize_wikilinks(
     html_content: str,
     public_pages: set[str],
     wiki_prefix: str = "wiki",
+    slug_to_original: dict[str, str] | None = None,
 ) -> tuple[str, bool, int, bool]:
     """Remove wikilinks to private pages and restore previously private links.
 
@@ -52,6 +54,8 @@ def sanitize_wikilinks(
         html_content: HTML content to process
         public_pages: Set of public page paths
         wiki_prefix: URL prefix for wiki content
+        slug_to_original: Mapping from slugified paths to original page paths
+            (used when slugify_urls is enabled)
 
     Returns:
         Tuple of (sanitized_content, was_modified, removed_links_count, cleaned_dollars)
@@ -59,6 +63,14 @@ def sanitize_wikilinks(
     from bs4 import NavigableString
 
     from .logging import debug
+
+    def _resolve_target(target: str) -> str | None:
+        """Resolve a target from an href to the original page path."""
+        if target in public_pages:
+            return target
+        if slug_to_original and target in slug_to_original:
+            return slug_to_original[target]
+        return None
 
     soup = BeautifulSoup(html_content, "html.parser")
     modified = False
@@ -70,7 +82,8 @@ def sanitize_wikilinks(
         wiki_path_attr = span.get("data-wiki-path", "")
         wiki_path = wiki_path_attr if isinstance(wiki_path_attr, str) else ""
         if wiki_path and wiki_path in public_pages:
-            href = f"/{wiki_prefix}/{wiki_path}/" if wiki_prefix else f"/{wiki_path}/"
+            url_path = slugify_path(wiki_path) if slug_to_original else wiki_path
+            href = f"/{wiki_prefix}/{url_path}/" if wiki_prefix else f"/{url_path}/"
             span.name = "a"
             span.attrs.clear()
             span["class"] = "wikilink"
@@ -86,14 +99,17 @@ def sanitize_wikilinks(
         href = href_attr if isinstance(href_attr, str) else ""
         wiki_target = extract_wiki_path(href, wiki_prefix)
 
-        if wiki_target and wiki_target not in public_pages:
+        if wiki_target and _resolve_target(wiki_target) is None:
             # This is a link to a private page.
-            # Convert it to a span marker so future builds can restore it.
+            # Store original path for data-wiki-path so restore works later.
+            original_path = wiki_target
+            if slug_to_original and wiki_target in slug_to_original:
+                original_path = slug_to_original[wiki_target]
             debug(f"    Removed private link: {wiki_target} -> {link.get_text()}")
             link.name = "span"
             link.attrs.clear()
             link["class"] = "wikilink-private"
-            link["data-wiki-path"] = wiki_target
+            link["data-wiki-path"] = original_path
             modified = True
             removed_links_count += 1
 
@@ -120,6 +136,7 @@ def process_html_file(
     public_pages: set[str],
     wiki_prefix: str = "wiki",
     build_dir: Path | None = None,
+    slug_to_original: dict[str, str] | None = None,
 ) -> bool:
     """Process a single HTML file to sanitize wikilinks.
 
@@ -128,6 +145,7 @@ def process_html_file(
         public_pages: Set of public page paths
         wiki_prefix: URL prefix for wiki content
         build_dir: Build directory for computing relative paths
+        slug_to_original: Mapping from slugified paths to original page paths
 
     Returns:
         True if file was modified, False otherwise
@@ -138,7 +156,7 @@ def process_html_file(
         content = html_file.read_text(encoding="utf-8")
 
         sanitized_content, modified, removed_links_count, cleaned_dollars = (
-            sanitize_wikilinks(content, public_pages, wiki_prefix)
+            sanitize_wikilinks(content, public_pages, wiki_prefix, slug_to_original)
         )
 
         if modified:
@@ -192,6 +210,14 @@ def postprocess_links(
     # Extract public page paths into a set for fast lookup
     public_paths = {page.path for page in public_pages}
 
+    # Build slug-to-original mapping when slugify is enabled
+    slugify = config.build.slugify_urls
+    slug_to_original: dict[str, str] | None = None
+    if slugify:
+        slug_to_original = {
+            slugify_path(p): p for p in public_paths if slugify_path(p) != p
+        }
+
     if not single_page:
         debug(f"Post-processing with {len(public_paths)} public pages...")
 
@@ -200,9 +226,10 @@ def postprocess_links(
 
     if single_page:
         # Process only the specified page
+        sp = slugify_path(single_page) if slugify else single_page
         possible_paths = [
-            build_dir / wiki_prefix / single_page / "index.html",  # Wiki page
-            build_dir / single_page / "index.html",  # Homepage page
+            build_dir / wiki_prefix / sp / "index.html",  # Wiki page
+            build_dir / sp / "index.html",  # Homepage page
         ]
 
         for path in possible_paths:
@@ -224,7 +251,9 @@ def postprocess_links(
 
     modified_count = 0
     for html_file in html_files:
-        if process_html_file(html_file, public_paths, wiki_prefix, build_dir):
+        if process_html_file(
+            html_file, public_paths, wiki_prefix, build_dir, slug_to_original
+        ):
             modified_count += 1
 
     if not single_page:

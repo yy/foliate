@@ -75,18 +75,36 @@ _DESCRIPTION_PATTERNS = [
     (re.compile(r"\$[^$]+\$"), ""),
 ]
 _WHITESPACE_PATTERN = re.compile(r"\s+")
+_MULTI_HYPHEN_RE = re.compile(r"-{2,}")
 _MARKDOWN_CONVERTERS = threading.local()
 _NL2BR_ENABLED = False
+_SLUGIFY_URLS_ENABLED = False
 
 
-def configure_extensions(nl2br: bool = False) -> None:
+def slugify_path(path: str) -> str:
+    """Replace spaces with hyphens in each segment of a URL path.
+
+    Preserves case and special characters; only transforms spaces.
+
+    Examples:
+        >>> slugify_path("Accessible PDF from LaTeX")
+        'Accessible-PDF-from-LaTeX'
+        >>> slugify_path("A/B  C/D")
+        'A/B-C/D'
+    """
+    parts = path.split("/")
+    return "/".join(_MULTI_HYPHEN_RE.sub("-", part.replace(" ", "-")) for part in parts)
+
+
+def configure_extensions(nl2br: bool = False, slugify_urls: bool = False) -> None:
     """Configure markdown extensions and clear converter caches.
 
     Call this at the start of a build to set up extensions based on config.
     Clears the thread-local converter cache so converters are rebuilt.
     """
-    global _NL2BR_ENABLED  # noqa: PLW0603
+    global _NL2BR_ENABLED, _SLUGIFY_URLS_ENABLED  # noqa: PLW0603
     _NL2BR_ENABLED = nl2br
+    _SLUGIFY_URLS_ENABLED = slugify_urls
     # Clear thread-local converter cache so converters pick up new extensions
     cache = getattr(_MARKDOWN_CONVERTERS, "cache", None)
     if cache is not None:
@@ -190,6 +208,8 @@ def _build_extension_configs(base_url: str) -> ExtensionConfigMap:
 
     extension_configs = {k: v.copy() for k, v in EXTENSION_CONFIGS.items()}
     extension_configs["mdx_wikilink_plus"]["base_url"] = base_url
+    if _SLUGIFY_URLS_ENABLED:
+        extension_configs["mdx_wikilink_plus"]["url_whitespace"] = "-"
     return extension_configs
 
 

@@ -222,6 +222,7 @@ class BuildConfig:
     home_page: str = "Home"  # Wiki page that shows recent pages list
     incremental: bool = True
     nl2br: bool = False  # Convert single newlines to <br> (Obsidian-style)
+    slugify_urls: bool = False  # Replace spaces with hyphens in URLs
 
 
 @dataclass

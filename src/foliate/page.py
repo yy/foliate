@@ -4,7 +4,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .markdown_utils import extract_description, extract_first_image, render_markdown
+from .markdown_utils import (
+    extract_description,
+    extract_first_image,
+    render_markdown,
+    slugify_path,
+)
 
 type Frontmatter = dict[str, object]
 
@@ -88,9 +93,11 @@ class Page:
         render_html: bool = True,
         file_path: Path | None = None,
         base_url: str = "/wiki/",
+        slugify_urls: bool = False,
     ) -> "Page":
         """Create a normalized page object from source markdown."""
-        page_url = f"{base_url}{page_path}/"
+        url_path = slugify_path(page_path) if slugify_urls else page_path
+        page_url = f"{base_url}{url_path}/"
 
         description = _coerce_str(meta.get("description")) or extract_description(
             markdown_content

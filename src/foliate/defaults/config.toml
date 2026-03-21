@@ -46,6 +46,11 @@ incremental = true
 # Useful for content with line-break-sensitive formatting (e.g., publication lists)
 nl2br = false
 
+# Replace spaces with hyphens in URLs for cleaner links
+# e.g., /wiki/My-Page/ instead of /wiki/My%20Page/
+# Legacy space-based URLs will redirect to the slugified version
+slugify_urls = true
+
 
 [visibility]
 # Foliate uses a two-tiered visibility system:

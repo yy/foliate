@@ -18,9 +18,30 @@ from .config import Config
 from .markdown_utils import (
     parse_markdown_file,
     render_markdown,
+    slugify_path,
 )
 from .page import Frontmatter, Page
 from .templates import get_template_loader
+
+_REDIRECT_TEMPLATE = """\
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="canonical" href="{canonical_url}">
+<meta http-equiv="refresh" content="0; url={canonical_url}">
+<title>Redirecting\u2026</title>
+</head>
+<body><a href="{canonical_url}">Redirecting\u2026</a></body>
+</html>
+"""
+
+
+def _write_legacy_redirect(legacy_output_path: Path, canonical_url: str) -> None:
+    """Write a redirect stub at the legacy (space-based) path."""
+    legacy_output_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_output_path.write_text(
+        _REDIRECT_TEMPLATE.format(canonical_url=canonical_url), encoding="utf-8"
+    )
 
 
 def is_path_ignored(
@@ -70,7 +91,11 @@ def get_content_info(
 
 
 def get_output_path(
-    build_dir: Path, page_path: str, base_url: str, wiki_dir_name: str
+    build_dir: Path,
+    page_path: str,
+    base_url: str,
+    wiki_dir_name: str,
+    slugify: bool = False,
 ) -> Path:
     """Determine the output file path for a page.
 
@@ -79,13 +104,15 @@ def get_output_path(
         page_path: The page's path (e.g. "about" or "Notes/Ideas")
         base_url: The content base URL ("/" for homepage, "/wiki/" for wiki)
         wiki_dir_name: The wiki directory name (e.g. "wiki")
+        slugify: Whether to slugify the path (spaces -> hyphens)
 
     Returns:
         Path to the output index.html file
     """
+    output_path = slugify_path(page_path) if slugify else page_path
     if base_url == "/":
-        return build_dir / page_path / "index.html"
-    return build_dir / wiki_dir_name / page_path / "index.html"
+        return build_dir / output_path / "index.html"
+    return build_dir / wiki_dir_name / output_path / "index.html"
 
 
 def render_page_to_file(
@@ -98,12 +125,14 @@ def render_page_to_file(
 ) -> None:
     """Render a page object to HTML file."""
     wiki_dir_name = config.build.wiki_prefix.strip("/")
+    slugify = config.build.slugify_urls
+    output_page_path = slugify_path(page.path) if slugify else page.path
 
     # Determine output directory
     if base_url == "/":
-        page_dir = build_dir / page.path
+        page_dir = build_dir / output_page_path
     else:
-        page_dir = build_dir / wiki_dir_name / page.path
+        page_dir = build_dir / wiki_dir_name / output_page_path
 
     page_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,6 +165,15 @@ def render_page_to_file(
     )
 
     (page_dir / "index.html").write_text(html, encoding="utf-8")
+
+    # Write legacy redirect at the original space-based path
+    if slugify and output_page_path != page.path:
+        if base_url == "/":
+            legacy_dir = build_dir / page.path
+        else:
+            legacy_dir = build_dir / wiki_dir_name / page.path
+        canonical_url = f"{base_url}{output_page_path}/"
+        _write_legacy_redirect(legacy_dir / "index.html", canonical_url)
 
 
 def iter_public_md_files(
@@ -210,7 +248,13 @@ def process_single_md_file(
     wiki_dir = config.build.wiki_prefix.strip("/")
 
     # Determine output path
-    output_file = get_output_path(build_dir, page_path, content_base_url, wiki_dir)
+    output_file = get_output_path(
+        build_dir,
+        page_path,
+        content_base_url,
+        wiki_dir,
+        slugify=config.build.slugify_urls,
+    )
 
     # Check if rebuild needed
     if incremental and not needs_rebuild(
@@ -224,6 +268,7 @@ def process_single_md_file(
             render_html=False,
             file_path=md_file,
             base_url=content_base_url,
+            slugify_urls=config.build.slugify_urls,
         )
         return page, False
 
@@ -236,6 +281,7 @@ def process_single_md_file(
         render_html=True,
         file_path=md_file,
         base_url=content_base_url,
+        slugify_urls=config.build.slugify_urls,
     )
     render_page_to_file(page, build_dir, env, config, None, content_base_url)
     return page, True
@@ -252,6 +298,8 @@ def process_markdown_files(
     single_page: str | None = None,
 ) -> tuple[list[Page], list[Page], dict[str, float], dict[str, int]]:
     """Process all markdown files and return page data and statistics."""
+    from .logging import error as log_error
+
     public_pages: list[Page] = []
     published_pages: list[Page] = []
     new_build_cache: dict[str, float] = {}
@@ -260,9 +308,25 @@ def process_markdown_files(
     def _track_skipped(_md_file: Path, _page_path: str) -> None:
         stats["skipped_count"] += 1
 
-    for md_file, page_path, base_url, meta, content in iter_public_md_files(
-        vault_path, config, single_page, on_skipped=_track_skipped
-    ):
+    # Collect all public pages first for collision detection when slugifying
+    all_entries = list(
+        iter_public_md_files(vault_path, config, single_page, on_skipped=_track_skipped)
+    )
+
+    # Check for slug collisions
+    if config.build.slugify_urls:
+        slug_to_original: dict[str, str] = {}
+        for _, page_path, _, _, _ in all_entries:
+            slug = slugify_path(page_path)
+            if slug in slug_to_original and slug_to_original[slug] != page_path:
+                log_error(
+                    f"URL collision: '{slug_to_original[slug]}' and '{page_path}' "
+                    f"both resolve to /{slug}/"
+                )
+                return [], [], {}, stats
+            slug_to_original[slug] = page_path
+
+    for md_file, page_path, base_url, meta, content in all_entries:
         page, was_rebuilt = process_single_md_file(
             md_file,
             page_path,
@@ -326,20 +390,32 @@ def remove_stale_pages(
         page_path, base_url, _ = get_content_info(
             page_path, homepage_dir, wiki_base_url
         )
-        output_file = get_output_path(build_dir, page_path, base_url, wiki_dir_name)
+        # Remove both slugified and original paths
+        paths_to_remove = [
+            get_output_path(build_dir, page_path, base_url, wiki_dir_name),
+        ]
+        if config.build.slugify_urls:
+            slugged = slugify_path(page_path)
+            if slugged != page_path:
+                paths_to_remove.append(
+                    get_output_path(
+                        build_dir, page_path, base_url, wiki_dir_name, slugify=True
+                    )
+                )
 
-        if output_file.exists():
-            output_file.unlink()
-            debug(f"  Removed stale: {page_path}")
-            # Remove empty parent directories up to build_dir
-            page_dir = output_file.parent
-            while page_dir != build_dir:
-                if not any(page_dir.iterdir()):
-                    page_dir.rmdir()
-                    page_dir = page_dir.parent
-                else:
-                    break
-            removed += 1
+        for output_file in paths_to_remove:
+            if output_file.exists():
+                output_file.unlink()
+                debug(f"  Removed stale: {output_file.relative_to(build_dir)}")
+                # Remove empty parent directories up to build_dir
+                page_dir = output_file.parent
+                while page_dir != build_dir:
+                    if not any(page_dir.iterdir()):
+                        page_dir.rmdir()
+                        page_dir = page_dir.parent
+                    else:
+                        break
+                removed += 1
 
     return removed
 
@@ -376,12 +452,14 @@ def generate_search_index(
     public_pages: list[Page],
     base_url: str = "/wiki/",
     wiki_dir_name: str = "wiki",
+    slugify: bool = False,
 ) -> None:
     """Generate search.json for client-side search."""
     search_data = []
     for page in public_pages:
         content_preview = page.body[:500] if page.body else ""
         page_base_url = page.base_url or base_url
+        url_path = slugify_path(page.path) if slugify else page.path
 
         published_str = page.published_at.isoformat() if page.published_at else ""
 
@@ -389,7 +467,7 @@ def generate_search_index(
             {
                 "title": page.title,
                 "path": page.path,
-                "url": f"{page_base_url}{page.path}/",
+                "url": f"{page_base_url}{url_path}/",
                 "content": content_preview,
                 "published": published_str,
                 "tags": page.tags,
@@ -404,10 +482,16 @@ def generate_search_index(
 
 
 def generate_sitemap(
-    build_dir: Path, public_pages: list[Page], base_url: str = "/wiki/"
+    build_dir: Path,
+    public_pages: list[Page],
+    base_url: str = "/wiki/",
+    slugify: bool = False,
 ) -> None:
     """Generate sitemap.txt with all public page URLs."""
-    sitemap_lines = [f"{base_url}{page.path}/" for page in public_pages]
+    sitemap_lines = [
+        f"{base_url}{slugify_path(page.path) if slugify else page.path}/"
+        for page in public_pages
+    ]
     (build_dir / "sitemap.txt").write_text("\n".join(sitemap_lines), encoding="utf-8")
 
 
@@ -442,8 +526,11 @@ def generate_site_files(
         wiki_dir.mkdir(parents=True, exist_ok=True)
         (wiki_dir / "index.html").write_text(wiki_redirect_html, encoding="utf-8")
 
-    generate_search_index(build_dir, public_pages, wiki_base_url, wiki_dir_name)
-    generate_sitemap(build_dir, public_pages, wiki_base_url)
+    slugify = config.build.slugify_urls
+    generate_search_index(
+        build_dir, public_pages, wiki_base_url, wiki_dir_name, slugify=slugify
+    )
+    generate_sitemap(build_dir, public_pages, wiki_base_url, slugify=slugify)
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +644,9 @@ def build(
     # Configure markdown extensions (e.g., nl2br) before any rendering
     from .markdown_utils import configure_extensions
 
-    configure_extensions(nl2br=config.build.nl2br)
+    configure_extensions(
+        nl2br=config.build.nl2br, slugify_urls=config.build.slugify_urls
+    )
 
     vault_path = config.vault_path
     if not vault_path:
