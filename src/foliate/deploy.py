@@ -66,43 +66,23 @@ def is_build_stale(config: Config) -> bool | None:
 
 
 def _did_public_source_set_change(config: Config, build_cache: dict) -> bool:
-    """Return True when cached public source files no longer match the vault."""
-    from .build import is_path_ignored
-    from .cache import CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY
-    from .markdown_utils import parse_markdown_file
+    """Return True when a previously-public source file has been deleted.
 
-    vault_path = config.vault_path
-    if not vault_path:
-        return False
+    The build cache keys are the absolute paths of public source files from the
+    last build.  If any of those files no longer exist on disk the build output
+    is stale (the deleted page is still in the build).  This is a cheap check
+    (one stat per cached file) — the mtime comparison already catches the other
+    direction (new or newly-public files).
+    """
+    from .cache import CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY
 
     cached_sources = {
         path
         for path in build_cache
         if path not in {CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY}
     }
-    if not cached_sources:
-        return False
 
-    current_public_sources: set[str] = set()
-    for source_file in vault_path.rglob("*.md"):
-        if not source_file.is_file():
-            continue
-
-        try:
-            rel_path = source_file.relative_to(vault_path)
-            if rel_path.parts and rel_path.parts[0] == ".foliate":
-                continue
-        except ValueError:
-            continue
-
-        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
-            continue
-
-        meta, _ = parse_markdown_file(source_file)
-        if meta.get("public", False):
-            current_public_sources.add(str(source_file))
-
-    return current_public_sources != cached_sources
+    return any(not Path(src).exists() for src in cached_sources)
 
 
 def _is_benign_pull_failure(stderr: str) -> bool:
