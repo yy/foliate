@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.1 - 2026-03-20
+
+### Fixed
+- Homepage wikilink rewrite now scoped to `class="wikilink"` anchors only, preventing false rewrites of regular links.
+- Deploy staleness check no longer parses frontmatter for every `.md` file; uses cheap stat-based check instead.
+- Deploy pull failure handling improved with clearer error/warning distinction.
+- Watch mode path matching uses proper relative path computation instead of substring matching.
+- `extract_first_image` handles `![alt](url "title")` syntax and angle-bracket URLs.
+- Image path normalization handles `assets/` prefix without leading slash.
+- Sitemap uses per-page `base_url` instead of a single global prefix.
+- Home and wiki root redirects resolve against actual built page URLs.
+
 ## 0.7.0 - 2026-03-20
 
 ### Added
