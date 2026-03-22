@@ -163,7 +163,7 @@ def render_page_to_file(
     if page.path == home_page_name and published_pages:
         filtered = [p for p in published_pages if p.path != home_page_name]
         recent_pages = sorted(filtered, key=lambda x: x.file_mtime or 0, reverse=True)[
-            :20
+            : config.build.recent_pages
         ]
 
     template = env.get_template(template_name)

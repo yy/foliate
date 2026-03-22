@@ -236,6 +236,7 @@ class BuildConfig:
     incremental: bool = True
     nl2br: bool = False  # Convert single newlines to <br> (Obsidian-style)
     slugify_urls: bool = False  # Replace spaces with hyphens in URLs
+    recent_pages: int = 20  # Number of recent pages shown on the home page
 
 
 @dataclass
