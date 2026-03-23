@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2 - 2026-03-23
+
+### Fixed
+- HTML-escape titles and descriptions in OG/Twitter meta tags — double quotes in titles no longer break link previews.
+
+### Added
+- `recent_pages` config option to control how many pages show on the wiki home page (default: 20).
+
 ## 0.7.1 - 2026-03-20
 
 ### Fixed
