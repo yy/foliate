@@ -7,14 +7,14 @@
 
     <!-- Description for search engines -->
     {% if page and page.description %}
-    <meta name="description" content="{{ page.description }}">
+    <meta name="description" content="{{ page.description|e }}">
     {% endif %}
 
     <!-- Open Graph (Facebook, LinkedIn, etc.) -->
     <meta property="og:type" content="article">
-    <meta property="og:title" content="{{ page.title if page else site_name }}">
+    <meta property="og:title" content="{{ (page.title if page else site_name)|e }}">
     {% if page and page.description %}
-    <meta property="og:description" content="{{ page.description }}">
+    <meta property="og:description" content="{{ page.description|e }}">
     {% endif %}
     <meta property="og:url" content="{{ site_url }}{{ page.url if page else '/' }}">
     {% if page and page.image %}
@@ -22,13 +22,13 @@
     {% elif default_og_image %}
     <meta property="og:image" content="{{ site_url }}{{ default_og_image }}">
     {% endif %}
-    <meta property="og:site_name" content="{{ site_name }}">
+    <meta property="og:site_name" content="{{ site_name|e }}">
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ page.title if page else site_name }}">
+    <meta name="twitter:title" content="{{ (page.title if page else site_name)|e }}">
     {% if page and page.description %}
-    <meta name="twitter:description" content="{{ page.description }}">
+    <meta name="twitter:description" content="{{ page.description|e }}">
     {% endif %}
     {% if page and page.image %}
     <meta name="twitter:image" content="{% if page.image.startswith('http') %}{{ page.image }}{% else %}{{ site_url }}{{ page.image }}{% endif %}">
