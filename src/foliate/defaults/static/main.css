@@ -498,6 +498,7 @@ footer {
   font-size: 1rem;
   color: var(--text-muted);
   flex-shrink: 0;
+  white-space: nowrap;
   text-align: right;
   font-weight: normal;
   font-family: var(--font-family-mono);
