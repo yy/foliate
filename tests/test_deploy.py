@@ -491,6 +491,30 @@ class TestDeployGithubPages:
 
                 assert result is False
 
+    @patch("foliate.logging.error")
+    @patch("foliate.deploy.subprocess.run", side_effect=FileNotFoundError("rsync"))
+    def test_returns_false_when_rsync_binary_is_missing(self, mock_run, mock_error):
+        """Missing rsync should be reported as a deploy failure, not raised."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "index.html").write_text("<html></html>")
+
+            target_dir = Path(tmpdir) / "target"
+            target_dir.mkdir()
+            (target_dir / ".git").mkdir()
+            config.deploy = DeployConfig(target=str(target_dir))
+
+            result = deploy_github_pages(config, dry_run=True)
+
+            assert result is False
+            mock_run.assert_called_once()
+            error_messages = [call.args[0] for call in mock_error.call_args_list]
+            assert any("rsync failed: rsync" in msg for msg in error_messages)
+
     @patch("foliate.deploy.subprocess.run")
     def test_aborts_on_non_benign_git_pull_failure(self, mock_run):
         """Unexpected git pull failures should stop deployment."""

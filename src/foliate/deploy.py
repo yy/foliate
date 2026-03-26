@@ -208,6 +208,17 @@ def _get_newest_source_mtime(config: Config) -> float:
     return max_mtime
 
 
+def _run_command(args: list[str], error_label: str, **kwargs):
+    """Run a subprocess command and convert OS errors into deploy failures."""
+    from .logging import error
+
+    try:
+        return subprocess.run(args, **kwargs)
+    except OSError as exc:
+        error(f"{error_label}: {exc}")
+        return None
+
+
 def deploy_github_pages(
     config: Config,
     dry_run: bool = False,
@@ -281,12 +292,15 @@ def deploy_github_pages(
     # Pull latest from remote to avoid conflicts when deploying from multiple machines
     if not dry_run:
         info("Pulling latest from remote...")
-        pull_result = subprocess.run(
+        pull_result = _run_command(
             ["git", "pull", "--rebase", "--autostash"],
+            "git pull failed",
             cwd=target,
             capture_output=True,
             text=True,
         )
+        if pull_result is None:
+            return False
         if pull_result.returncode != 0:
             stderr = pull_result.stderr.strip()
             if _is_benign_pull_failure(stderr):
@@ -320,15 +334,24 @@ def deploy_github_pages(
 
     # Run rsync
     if dry_run:
-        rsync_result = subprocess.run(
+        rsync_result = _run_command(
             rsync_args,
+            "rsync failed",
             capture_output=True,
             encoding="utf-8",
             errors="replace",
         )
     else:
         # Always show output in non-dry-run so user sees what's happening.
-        rsync_result = subprocess.run(rsync_args, encoding="utf-8", errors="replace")
+        rsync_result = _run_command(
+            rsync_args,
+            "rsync failed",
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    if rsync_result is None:
+        return False
 
     if rsync_result.returncode != 0:
         error("rsync failed")
@@ -344,19 +367,23 @@ def deploy_github_pages(
 
     else:
         # Check for changes in target repo
-        diff_result = subprocess.run(
+        diff_result = _run_command(
             ["git", "diff", "--quiet"],
+            "git diff failed",
             cwd=target,
             capture_output=True,
         )
 
         # Also check for untracked files
-        status_result = subprocess.run(
+        status_result = _run_command(
             ["git", "status", "--porcelain"],
+            "git status failed",
             cwd=target,
             capture_output=True,
             text=True,
         )
+        if diff_result is None or status_result is None:
+            return False
 
         has_changes = diff_result.returncode != 0 or bool(status_result.stdout.strip())
 
@@ -377,21 +404,27 @@ def deploy_github_pages(
     # Git add, commit, push
     info(f"Committing: {message}")
 
-    add_result = subprocess.run(
+    add_result = _run_command(
         ["git", "add", "."],
+        "git add failed",
         cwd=target,
         capture_output=True,
     )
+    if add_result is None:
+        return False
     if add_result.returncode != 0:
         error("git add failed")
         return False
 
-    commit_result = subprocess.run(
+    commit_result = _run_command(
         ["git", "commit", "-m", message],
+        "git commit failed",
         cwd=target,
         capture_output=True,
         text=True,
     )
+    if commit_result is None:
+        return False
     if commit_result.returncode != 0:
         error("git commit failed")
         error(commit_result.stderr)
@@ -399,12 +432,15 @@ def deploy_github_pages(
 
     info("Pushing to remote...")
 
-    push_result = subprocess.run(
+    push_result = _run_command(
         ["git", "push"],
+        "git push failed",
         cwd=target,
         capture_output=True,
         text=True,
     )
+    if push_result is None:
+        return False
     if push_result.returncode != 0:
         error("git push failed")
         error(push_result.stderr)
