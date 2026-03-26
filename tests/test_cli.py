@@ -302,6 +302,20 @@ class TestDoctorCommand:
             assert result.exit_code == 0
             assert "OK" in result.output
 
+    def test_reports_validation_errors_cleanly(self):
+        """Should surface config validation errors without a traceback."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text('[nav]\nitems = ["broken"]\n')
+
+            result = runner.invoke(main, ["doctor"])
+
+            assert result.exit_code == 1
+            assert "Invalid configuration:" in result.output
+            assert "must be a table" in result.output
+
 
 class TestDeployCommand:
     """Tests for the deploy command."""

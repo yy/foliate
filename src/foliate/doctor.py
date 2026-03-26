@@ -42,6 +42,9 @@ def run_doctor(
     except tomllib.TOMLDecodeError as e:
         errors.append(f"Invalid TOML in {display_config}: {e}")
         return errors, warnings, ok
+    except (TypeError, KeyError, ValueError) as e:
+        errors.append(f"Invalid configuration: {e}")
+        return errors, warnings, ok
     except OSError as e:
         errors.append(f"Unable to read {display_config}: {e}")
         return errors, warnings, ok
