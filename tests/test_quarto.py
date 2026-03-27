@@ -1,7 +1,10 @@
 """Tests for quarto module."""
 
+import sys
 import tempfile
+import types
 from pathlib import Path
+from unittest.mock import Mock
 
 from foliate.config import AdvancedConfig, Config
 from foliate.quarto import preprocess_quarto
@@ -91,3 +94,25 @@ class TestPreprocessQuarto:
             result = preprocess_quarto(config, single_file=qmd_file)
 
             assert result == {}
+
+    def test_single_file_missing_is_skipped(self, monkeypatch, tmp_path):
+        """Missing single-file QMD paths should be ignored without rendering."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+
+        qmd_file = tmp_path / "paper.qmd"
+        generated_md = tmp_path / "paper.md"
+        generated_md.write_text("# Existing generated markdown")
+
+        fake_module = types.ModuleType("quarto_prerender")
+        fake_module.is_quarto_available = lambda: True
+        fake_module.process_all = lambda **_kwargs: {}
+        render_qmd = Mock(name="render_qmd")
+        fake_module.render_qmd = render_qmd
+        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+
+        result = preprocess_quarto(config, single_file=qmd_file)
+
+        assert result == {}
+        render_qmd.assert_not_called()

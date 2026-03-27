@@ -51,6 +51,9 @@ def preprocess_quarto(
     if single_file:
         # Process single file
         qmd_file = Path(single_file).resolve()
+        if not qmd_file.exists():
+            debug(f"Quarto source missing, skipping: {qmd_file}")
+            return {}
         md_file = qmd_file.with_suffix(".md")
 
         # Check if render needed: md doesn't exist or qmd is newer
