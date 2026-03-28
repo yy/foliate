@@ -555,7 +555,7 @@ def generate_site_files(
         (wiki_dir / "index.html").write_text(wiki_redirect_html, encoding="utf-8")
 
     generate_search_index(
-        build_dir, public_pages, wiki_base_url, wiki_dir_name, slugify=slugify
+        build_dir, published_pages, wiki_base_url, wiki_dir_name, slugify=slugify
     )
     generate_sitemap(build_dir, public_pages, slugify=slugify)
 
