@@ -579,6 +579,26 @@ class TestWatchFunction:
             mock_observer.schedule.assert_called()
             mock_observer.stop.assert_called_once()
 
+    def test_watch_cleans_up_when_interrupt_happens_during_startup(self, config):
+        """Startup interrupts should still cleanup observer and server process."""
+        with (
+            patch("foliate.watch.do_build"),
+            patch("foliate.resources.start_dev_server") as mock_server,
+            patch("foliate.watch.Observer") as mock_observer_class,
+        ):
+            mock_observer = MagicMock()
+            mock_observer_class.return_value = mock_observer
+            mock_process = MagicMock()
+            mock_server.return_value = mock_process
+            mock_observer.start.side_effect = KeyboardInterrupt()
+
+            watch(config)
+
+            mock_observer.stop.assert_called_once()
+            mock_process.terminate.assert_called_once()
+            mock_process.wait.assert_called_once()
+            mock_observer.join.assert_called_once()
+
 
 class TestRebuildCallback:
     """Tests for the rebuild callback created in watch()."""

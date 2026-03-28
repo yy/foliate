@@ -182,17 +182,19 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     if static_dir.exists():
         observer.schedule(handler, str(static_dir), recursive=True)
 
-    observer.start()
-
     try:
+        observer.start()
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         info("\nStopping watch mode...")
+    finally:
         observer.stop()
         if server_process:
             server_process.terminate()
             server_process.wait()
+        try:
+            observer.join()
+        except RuntimeError:
+            pass
         info("Watch mode stopped.")
-
-    observer.join()
