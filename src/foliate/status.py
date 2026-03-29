@@ -160,6 +160,7 @@ def scan_status(config: Config) -> StatusReport:
     last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else None
 
     pages: list[PageStatus] = []
+    selected_files: dict[str, tuple[Path, str, str, bool]] = {}
 
     # Glob .md files, and .qmd files if Quarto is enabled
     globs = ["**/*.md"]
@@ -183,6 +184,24 @@ def scan_status(config: Config) -> StatusReport:
         page_path, content_base_url, is_homepage = get_content_info(
             page_path, homepage_dir, wiki_base_url
         )
+
+        existing = selected_files.get(page_path)
+        if existing is not None:
+            existing_file = existing[0]
+            if existing_file.suffix.lower() == ".md":
+                continue
+            if md_file.suffix.lower() == ".md":
+                selected_files[page_path] = (
+                    md_file,
+                    page_path,
+                    content_base_url,
+                    is_homepage,
+                )
+            continue
+
+        selected_files[page_path] = (md_file, page_path, content_base_url, is_homepage)
+
+    for md_file, page_path, content_base_url, is_homepage in selected_files.values():
 
         meta, _ = parse_markdown_file(md_file)
         is_public = bool(meta.get("public", False))
