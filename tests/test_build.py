@@ -305,8 +305,12 @@ url = "https://test.com"
 
         homepage_dir = vault_path / "_homepage"
         homepage_dir.mkdir()
-        (homepage_dir / "about.md").write_text("---\npublic: true\n---\nAbout")
-        (vault_path / "Home.md").write_text("---\npublic: true\n---\nWiki home")
+        (homepage_dir / "about.md").write_text(
+            "---\npublic: true\npublished: true\n---\nAbout"
+        )
+        (vault_path / "Home.md").write_text(
+            "---\npublic: true\npublished: true\n---\nWiki home"
+        )
 
         config = Config.load(config_path)
         build.build(config=config, force_rebuild=True)
@@ -317,6 +321,39 @@ url = "https://test.com"
 
         assert by_path["about"]["url"] == "/about/"
         assert by_path["Home"]["url"] == "/wiki/Home/"
+
+    def test_search_index_excludes_unpublished_public_pages(self, tmp_path):
+        """search.json should only include published pages."""
+        import json
+
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+"""
+        )
+
+        (vault_path / "Published.md").write_text(
+            "---\npublic: true\npublished: true\n---\nPublished"
+        )
+        (vault_path / "Draft.md").write_text("---\npublic: true\n---\nDraft")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        search_file = vault_path / ".foliate" / "build" / "wiki" / "search.json"
+        entries = json.loads(search_file.read_text())
+        paths = {entry["path"] for entry in entries}
+
+        assert "Published" in paths
+        assert "Draft" not in paths
 
     def test_sitemap_uses_page_base_url_for_homepage_content(self, tmp_path):
         """sitemap.txt should use / URLs for _homepage content."""
@@ -640,8 +677,12 @@ url = "https://example.com"
 """
         )
 
-        (vault_path / "Alpha.md").write_text("---\npublic: true\n---\nAlpha")
-        (vault_path / "Beta.md").write_text("---\npublic: true\n---\nBeta")
+        (vault_path / "Alpha.md").write_text(
+            "---\npublic: true\npublished: true\n---\nAlpha"
+        )
+        (vault_path / "Beta.md").write_text(
+            "---\npublic: true\npublished: true\n---\nBeta"
+        )
 
         config = Config.load(config_path)
         build.build(config=config, force_rebuild=True)
