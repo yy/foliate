@@ -364,6 +364,43 @@ incremental = false
         assert len(report.published_pages) == 1
         assert report.published_pages[0].page_path == "public"
 
+    def test_quarto_status_prefers_rendered_markdown_over_qmd(self, tmp_path):
+        """Status should not double-count a Quarto source and its rendered markdown."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "about"
+
+[advanced]
+quarto_enabled = true
+"""
+        )
+
+        (vault_path / "paper.qmd").write_text(
+            "---\ntitle: Paper\npublic: true\npublished: true\n---\n# Source\n"
+        )
+        (vault_path / "paper.md").write_text(
+            "---\ntitle: Paper\npublic: true\npublished: true\n---\n# Rendered\n"
+        )
+
+        config = Config.load(config_path)
+        report = scan_status(config)
+
+        assert len(report.pages) == 1
+        assert report.pages[0].page_path == "paper"
+        assert report.pages[0].source_file.name == "paper.md"
+        assert len(report.public_pages) == 1
+
 
 class TestPageStatus:
     """Tests for PageStatus dataclass."""
