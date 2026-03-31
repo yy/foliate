@@ -33,6 +33,28 @@ SUPPORTED_ASSET_EXTENSIONS = {
 }
 
 
+def _should_copy_file(path: Path, filter_extensions: set | None) -> bool:
+    """Return whether a file should be copied under the active filter."""
+    return not filter_extensions or path.suffix.lower() in filter_extensions
+
+
+def _copy_directory(
+    src_dir: Path, target_dir: Path, filter_extensions: set | None = None
+) -> None:
+    """Copy a directory tree while honoring optional extension filtering."""
+
+    def _ignore(directory: str, entries: list[str]) -> list[str]:
+        directory_path = Path(directory)
+        return [
+            entry
+            for entry in entries
+            if (directory_path / entry).is_file()
+            and not _should_copy_file(directory_path / entry, filter_extensions)
+        ]
+
+    shutil.copytree(src_dir, target_dir, ignore=_ignore)
+
+
 def robust_rmtree(path: Path, retries: int = 3, delay: float = 0.1) -> None:
     """Remove a directory tree with retry logic for macOS file descriptor races."""
     for attempt in range(retries):
@@ -63,7 +85,7 @@ def copy_directory_incremental(
     if force_rebuild or not target_dir.exists():
         if target_dir.exists():
             robust_rmtree(target_dir)
-        shutil.copytree(src_dir, target_dir)
+        _copy_directory(src_dir, target_dir, filter_extensions)
         return
 
     source_files: set[Path] = set()
@@ -72,7 +94,7 @@ def copy_directory_incremental(
     for src_file in src_dir.glob("**/*"):
         if not src_file.is_file():
             continue
-        if filter_extensions and src_file.suffix.lower() not in filter_extensions:
+        if not _should_copy_file(src_file, filter_extensions):
             continue
 
         rel_path = src_file.relative_to(src_dir)
@@ -90,19 +112,17 @@ def copy_directory_incremental(
         for target_file in target_dir.glob("**/*"):
             if not target_file.is_file():
                 continue
-            if (
-                filter_extensions
-                and target_file.suffix.lower() not in filter_extensions
-            ):
-                continue
             rel_path = target_file.relative_to(target_dir)
+            if not _should_copy_file(target_file, filter_extensions):
+                needs_refresh = True
+                break
             if rel_path not in source_files:
                 needs_refresh = True
                 break
 
     if needs_refresh:
         robust_rmtree(target_dir)
-        shutil.copytree(src_dir, target_dir)
+        _copy_directory(src_dir, target_dir, filter_extensions)
 
 
 def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> None:

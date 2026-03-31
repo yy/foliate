@@ -33,6 +33,50 @@ def test_copy_directory_incremental_removes_deleted_files():
         assert not (target_dir / "b.txt").exists()
 
 
+def test_copy_directory_incremental_initial_copy_respects_extension_filter():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_dir = Path(tmpdir) / "src"
+        target_dir = Path(tmpdir) / "target"
+        src_dir.mkdir()
+
+        _write(src_dir / "allowed.txt", "allowed")
+        _write(src_dir / "ignored.tmp", "ignored")
+        _write(src_dir / "nested" / "kept.txt", "nested")
+
+        copy_directory_incremental(
+            src_dir,
+            target_dir,
+            force_rebuild=True,
+            filter_extensions={".txt"},
+        )
+
+        assert (target_dir / "allowed.txt").exists()
+        assert (target_dir / "nested" / "kept.txt").exists()
+        assert not (target_dir / "ignored.tmp").exists()
+
+
+def test_copy_directory_incremental_removes_unsupported_target_files():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_dir = Path(tmpdir) / "src"
+        target_dir = Path(tmpdir) / "target"
+        src_dir.mkdir()
+        target_dir.mkdir()
+
+        _write(src_dir / "allowed.txt", "allowed")
+        _write(target_dir / "allowed.txt", "allowed")
+        _write(target_dir / "leftover.tmp", "leftover")
+
+        copy_directory_incremental(
+            src_dir,
+            target_dir,
+            force_rebuild=False,
+            filter_extensions={".txt"},
+        )
+
+        assert (target_dir / "allowed.txt").exists()
+        assert not (target_dir / "leftover.tmp").exists()
+
+
 def test_copy_static_assets_preserves_bundled_defaults_with_user_static():
     with tempfile.TemporaryDirectory() as tmpdir:
         vault = Path(tmpdir)
