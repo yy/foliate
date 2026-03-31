@@ -1,5 +1,6 @@
 """Tests for deploy module."""
 
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -223,6 +224,37 @@ class TestIsBuildStale:
             )
 
             result = is_build_stale(config)
+            assert result is True
+
+    def test_returns_true_when_new_public_page_has_older_mtime_than_build(self):
+        """New public pages should mark the build stale even with older mtimes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            existing_page = vault / "existing.md"
+            existing_page.write_text("---\npublic: true\n---\n# Existing")
+
+            build_dir = vault / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            build_file = build_dir / "index.html"
+            build_file.write_text("<html>Test</html>")
+
+            cache_dir = vault / ".foliate" / "cache"
+            cache_dir.mkdir(parents=True)
+            save_build_cache(
+                cache_dir / ".build_cache",
+                {str(existing_page): existing_page.stat().st_mtime},
+            )
+
+            imported_page = vault / "imported.md"
+            imported_page.write_text("---\npublic: true\n---\n# Imported")
+            older_than_build = build_file.stat().st_mtime - 3600
+            os.utime(imported_page, (older_than_build, older_than_build))
+
+            result = is_build_stale(config)
+
             assert result is True
 
 

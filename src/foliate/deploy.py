@@ -65,14 +65,44 @@ def is_build_stale(config: Config) -> bool | None:
     return source_mtime > build_mtime
 
 
+def _collect_public_source_paths(config: Config) -> set[str]:
+    """Return the current set of public markdown source files in the vault."""
+    from .build import is_path_ignored
+    from .markdown_utils import parse_markdown_file
+
+    vault_path = config.vault_path
+    if not vault_path:
+        return set()
+
+    public_sources: set[str] = set()
+    for source_file in vault_path.rglob("*.md"):
+        if not source_file.is_file():
+            continue
+
+        try:
+            rel_path = source_file.relative_to(vault_path)
+        except ValueError:
+            continue
+
+        if rel_path.parts and rel_path.parts[0] == ".foliate":
+            continue
+        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
+            continue
+
+        meta, _ = parse_markdown_file(source_file)
+        if bool(meta.get("public", False)):
+            public_sources.add(str(source_file))
+
+    return public_sources
+
+
 def _did_public_source_set_change(config: Config, build_cache: dict) -> bool:
-    """Return True when a previously-public source file has been deleted.
+    """Return True when the set of public source files changed since build.
 
     The build cache keys are the absolute paths of public source files from the
-    last build.  If any of those files no longer exist on disk the build output
-    is stale (the deleted page is still in the build).  This is a cheap check
-    (one stat per cached file) — the mtime comparison already catches the other
-    direction (new or newly-public files).
+    last build. Compare those keys with the current public markdown sources so
+    the stale check catches both deleted pages and newly added/imported public
+    pages whose mtimes may predate the last build.
     """
     from .cache import CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY
 
@@ -81,8 +111,9 @@ def _did_public_source_set_change(config: Config, build_cache: dict) -> bool:
         for path in build_cache
         if path not in {CONFIG_MTIME_KEY, TEMPLATES_MTIME_KEY}
     }
+    current_sources = _collect_public_source_paths(config)
 
-    return any(not Path(src).exists() for src in cached_sources)
+    return cached_sources != current_sources
 
 
 def _is_benign_pull_failure(stderr: str) -> bool:
