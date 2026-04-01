@@ -9,6 +9,43 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
+_PACKAGE_RESOURCE_ERRORS = (
+    FileNotFoundError,
+    ImportError,
+    ModuleNotFoundError,
+    TypeError,
+)
+
+
+def _get_package_file(package: str, filename: str):
+    """Resolve a single file resource from a package."""
+    try:
+        resource = importlib.resources.files(package).joinpath(filename)
+        if resource.is_file():
+            return resource
+    except _PACKAGE_RESOURCE_ERRORS:
+        pass
+    return None
+
+
+def _iter_matching_package_files(
+    package: str,
+    suffix: str | None = None,
+    exclude_python: bool = True,
+) -> Iterator:
+    """Yield package resources that match the active filters."""
+    try:
+        for item in importlib.resources.files(package).iterdir():
+            if not item.is_file():
+                continue
+            if exclude_python and item.name.endswith(".py"):
+                continue
+            if suffix and not item.name.endswith(suffix):
+                continue
+            yield item
+    except _PACKAGE_RESOURCE_ERRORS:
+        return
+
 
 def expand_path(path: str) -> str:
     """Expand user home directory (~) in a path.
@@ -32,12 +69,12 @@ def read_package_text(package: str, filename: str) -> str | None:
     Returns:
         File contents as string, or None if not found
     """
+    resource = _get_package_file(package, filename)
+    if resource is None:
+        return None
     try:
-        pkg = importlib.resources.files(package)
-        resource = pkg.joinpath(filename)
-        if resource.is_file():
-            return resource.read_text(encoding="utf-8")
-    except (TypeError, FileNotFoundError, ModuleNotFoundError):
+        return resource.read_text(encoding="utf-8")
+    except _PACKAGE_RESOURCE_ERRORS:
         pass
     return None
 
@@ -52,12 +89,12 @@ def read_package_bytes(package: str, filename: str) -> bytes | None:
     Returns:
         File contents as bytes, or None if not found
     """
+    resource = _get_package_file(package, filename)
+    if resource is None:
+        return None
     try:
-        pkg = importlib.resources.files(package)
-        resource = pkg.joinpath(filename)
-        if resource.is_file():
-            return resource.read_bytes()
-    except (TypeError, FileNotFoundError, ModuleNotFoundError):
+        return resource.read_bytes()
+    except _PACKAGE_RESOURCE_ERRORS:
         pass
     return None
 
@@ -75,18 +112,8 @@ def iter_package_files(
     Yields:
         Tuples of (filename, is_file) for each item in the package
     """
-    try:
-        pkg = importlib.resources.files(package)
-        for item in pkg.iterdir():
-            if not item.is_file():
-                continue
-            if exclude_python and item.name.endswith(".py"):
-                continue
-            if suffix and not item.name.endswith(suffix):
-                continue
-            yield item.name, True
-    except (TypeError, FileNotFoundError, ImportError):
-        pass
+    for item in _iter_matching_package_files(package, suffix, exclude_python):
+        yield item.name, True
 
 
 def copy_package_files(
@@ -109,23 +136,12 @@ def copy_package_files(
     created = []
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        pkg = importlib.resources.files(package)
-        for item in pkg.iterdir():
-            if not item.is_file():
-                continue
-            if item.name.endswith(".py"):
-                continue
-            if suffix and not item.name.endswith(suffix):
-                continue
-
-            target_file = target_dir / item.name
-            if force or not target_file.exists():
-                # Use bytes for binary safety
-                target_file.write_bytes(item.read_bytes())
-                created.append(str(target_file))
-    except (TypeError, FileNotFoundError, ImportError):
-        pass
+    for item in _iter_matching_package_files(package, suffix):
+        target_file = target_dir / item.name
+        if force or not target_file.exists():
+            # Use bytes for binary safety
+            target_file.write_bytes(item.read_bytes())
+            created.append(str(target_file))
 
     return created
 
@@ -142,14 +158,10 @@ def get_package_file_path(package: str, filename: str) -> Path | None:
     Returns:
         Path to the resource, or None if not found
     """
-    try:
-        pkg = importlib.resources.files(package)
-        resource = pkg.joinpath(filename)
-        if resource.is_file():
-            return Path(str(resource))
-    except (TypeError, FileNotFoundError, ModuleNotFoundError):
-        pass
-    return None
+    resource = _get_package_file(package, filename)
+    if resource is None:
+        return None
+    return Path(str(resource))
 
 
 def check_port_available(port: int) -> bool:

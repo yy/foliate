@@ -16,6 +16,9 @@ from .config import Config
 class FoliateEventHandler(FileSystemEventHandler):
     """Handle file system events for foliate watch mode."""
 
+    _IGNORED_PATH_MARKERS = ("/.git/", "/.foliate/build/", "/.foliate/cache/")
+    _FULL_REBUILD_EXTENSIONS = {".html", ".css", ".toml"}
+
     def __init__(
         self,
         config: Config,
@@ -35,42 +38,30 @@ class FoliateEventHandler(FileSystemEventHandler):
             e.lower() for e in SUPPORTED_ASSET_EXTENSIONS
         }
 
-    def on_any_event(self, event):
-        if event.is_directory:
-            return
+    def _normalize_path(self, path: str) -> str:
+        return path.replace("\\", "/")
 
-        src_path = event.src_path
-        normalized_path = src_path.replace("\\", "/")
-
-        # Ignore hidden files, git, build directory, and cache directory
-        if (
-            "/.git/" in normalized_path
-            or "/.foliate/build/" in normalized_path
-            or "/.foliate/cache/" in normalized_path
-        ):
-            return
-
-        # Check for ignored folders from config
-        normalized_vault_path = ""
-        if self.config.vault_path:
-            normalized_vault_path = str(self.config.vault_path).replace("\\", "/")
-
+    def _get_relative_path_parts(self, normalized_path: str) -> list[str]:
         relative_path = normalized_path.lstrip("/")
-        if normalized_vault_path:
-            prefix = normalized_vault_path.rstrip("/") + "/"
+        if self.config.vault_path:
+            prefix = self._normalize_path(str(self.config.vault_path)).rstrip("/") + "/"
             if normalized_path.startswith(prefix):
                 relative_path = normalized_path[len(prefix) :]
+        return [part for part in relative_path.split("/") if part]
 
-        path_parts = [part for part in relative_path.split("/") if part]
-        for folder in self.config.build.ignored_folders:
-            if folder in path_parts[:-1]:
-                return
+    def _should_ignore_path(self, normalized_path: str) -> bool:
+        if any(marker in normalized_path for marker in self._IGNORED_PATH_MARKERS):
+            return True
 
-        # Check if it's a relevant file type
-        ext = Path(src_path).suffix.lower()
-        if ext not in self.relevant_extensions:
-            return
+        path_parts = self._get_relative_path_parts(normalized_path)
+        return any(
+            folder in path_parts[:-1] for folder in self.config.build.ignored_folders
+        )
 
+    def _should_track_path(self, src_path: str) -> bool:
+        return Path(src_path).suffix.lower() in self.relevant_extensions
+
+    def _queue_change(self, src_path: str) -> None:
         with self.rebuild_lock:
             if src_path not in self.pending_changes:
                 self.pending_changes.append(src_path)
@@ -85,25 +76,50 @@ class FoliateEventHandler(FileSystemEventHandler):
             self._debounce_timer.daemon = True
             self._debounce_timer.start()
 
-    def process_changes(self):
-        """Process pending file changes."""
+    def _take_pending_changes(self) -> list[str]:
         with self.rebuild_lock:
             if not self.pending_changes:
-                return
+                return []
             changes = self.pending_changes.copy()
             self.pending_changes.clear()
+        return changes
 
-        # Categorize changes
+    def _categorize_changes(self, changes: list[str]) -> tuple[bool, list[Path]]:
         needs_full_rebuild = False
-        qmd_files = []
+        qmd_files: list[Path] = []
 
         for changed_path in changes:
             path = Path(changed_path)
             suffix = path.suffix.lower()
-            if suffix in {".html", ".css", ".toml"}:
+            if suffix in self._FULL_REBUILD_EXTENSIONS:
                 needs_full_rebuild = True
             elif suffix == ".qmd":
                 qmd_files.append(path)
+
+        return needs_full_rebuild, qmd_files
+
+    def on_any_event(self, event):
+        if event.is_directory:
+            return
+
+        src_path = event.src_path
+        normalized_path = self._normalize_path(src_path)
+
+        if self._should_ignore_path(normalized_path):
+            return
+
+        if not self._should_track_path(src_path):
+            return
+
+        self._queue_change(src_path)
+
+    def process_changes(self):
+        """Process pending file changes."""
+        changes = self._take_pending_changes()
+        if not changes:
+            return
+
+        needs_full_rebuild, qmd_files = self._categorize_changes(changes)
 
         # Preprocess any changed .qmd files before rebuild
         if qmd_files and self.config.advanced.quarto_enabled:
