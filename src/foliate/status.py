@@ -11,6 +11,7 @@ from pathlib import Path
 from .build import get_content_info, get_output_path, is_path_ignored
 from .config import Config
 from .markdown_utils import parse_markdown_file
+from .quarto import is_quarto_preprocessing_available
 
 
 @dataclass
@@ -162,9 +163,10 @@ def scan_status(config: Config) -> StatusReport:
     pages: list[PageStatus] = []
     selected_files: dict[str, tuple[Path, str, str, bool]] = {}
 
-    # Glob .md files, and .qmd files if Quarto is enabled
+    # Keep dry-run/status aligned with build(): qmd-only pages are buildable
+    # only when Quarto preprocessing can actually run in this environment.
     globs = ["**/*.md"]
-    if config.advanced.quarto_enabled:
+    if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
         globs.append("**/*.qmd")
     source_files = sorted(f for pattern in globs for f in vault_path.glob(pattern))
 

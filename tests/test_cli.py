@@ -187,6 +187,38 @@ class TestBuildCommand:
             assert "Would build (1):" in result.output
             assert "+ test (forced)" in result.output
 
+    @patch("foliate.status.is_quarto_preprocessing_available", return_value=False)
+    def test_dry_run_skips_qmd_only_pages_when_preprocessing_unavailable(
+        self, _mock_quarto_available
+    ):
+        """--dry-run should not claim qmd-only pages are buildable without Quarto."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            Path(".foliate").mkdir()
+            Path(".foliate/config.toml").write_text(
+                """
+[site]
+name = "Test"
+url = "https://example.com"
+
+[advanced]
+quarto_enabled = true
+"""
+            )
+            Path("paper.qmd").write_text(
+                "---\npublic: true\npublished: true\n---\n# Paper\n"
+            )
+
+            result = runner.invoke(main, ["build", "--dry-run"])
+
+            assert result.exit_code == 0
+            assert "Would build (0):" in result.output
+            assert (
+                "Summary: 0 public, 0 published, 0 would build, 0 private"
+                in result.output
+            )
+            assert "paper" not in result.output
+
     def test_dry_run_rejects_serve_flag(self):
         """--serve is incompatible with --dry-run."""
         runner = CliRunner()

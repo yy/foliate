@@ -9,6 +9,16 @@ from .config import Config
 from .logging import debug
 
 
+def is_quarto_preprocessing_available() -> bool:
+    """Return whether Quarto preprocessing can run in this environment."""
+    try:
+        from quarto_prerender import is_quarto_available
+    except ImportError:
+        return False
+
+    return bool(is_quarto_available())
+
+
 def preprocess_quarto(
     config: Config,
     force: bool = False,
@@ -22,7 +32,8 @@ def preprocess_quarto(
         single_file: Only process this specific .qmd file (Path object)
 
     Returns:
-        dict mapping .qmd paths to generated .md paths, or empty dict if disabled/unavailable
+        dict mapping .qmd paths to generated .md paths,
+        or empty dict if disabled/unavailable
     """
     if not config.advanced.quarto_enabled:
         return {}

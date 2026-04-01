@@ -401,6 +401,75 @@ quarto_enabled = true
         assert report.pages[0].source_file.name == "paper.md"
         assert len(report.public_pages) == 1
 
+    def test_qmd_only_page_skipped_when_preprocessing_unavailable(
+        self, tmp_path, monkeypatch
+    ):
+        """QMD-only pages should not appear when Quarto preprocessing cannot run."""
+        monkeypatch.setattr(
+            "foliate.status.is_quarto_preprocessing_available", lambda: False
+        )
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[advanced]
+quarto_enabled = true
+"""
+        )
+
+        (vault_path / "paper.qmd").write_text(
+            "---\ntitle: Paper\npublic: true\npublished: true\n---\n# Source\n"
+        )
+
+        config = Config.load(config_path)
+        report = scan_status(config)
+
+        assert report.pages == []
+        assert report.public_pages == []
+
+    def test_qmd_only_page_included_when_preprocessing_available(
+        self, tmp_path, monkeypatch
+    ):
+        """QMD-only pages should appear when Quarto preprocessing is available."""
+        monkeypatch.setattr(
+            "foliate.status.is_quarto_preprocessing_available", lambda: True
+        )
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[advanced]
+quarto_enabled = true
+"""
+        )
+
+        (vault_path / "paper.qmd").write_text(
+            "---\ntitle: Paper\npublic: true\npublished: true\n---\n# Source\n"
+        )
+
+        config = Config.load(config_path)
+        report = scan_status(config)
+
+        assert len(report.pages) == 1
+        assert report.pages[0].page_path == "paper"
+        assert report.pages[0].source_file.name == "paper.qmd"
+
 
 class TestPageStatus:
     """Tests for PageStatus dataclass."""
