@@ -3,7 +3,7 @@
 import json
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from jinja2 import Environment
@@ -302,9 +302,13 @@ def render_page_to_file(
     recent_pages: list[Page] | None = None
     if page.path == home_page_name and published_pages:
         filtered = [p for p in published_pages if p.path != home_page_name]
-        recent_pages = sorted(filtered, key=lambda x: x.file_mtime or 0, reverse=True)[
-            : config.build.recent_pages
-        ]
+        recent_pages = sorted(
+            filtered,
+            key=lambda x: (
+                x.modified_at or datetime.min.replace(tzinfo=timezone.utc)
+            ).timestamp(),
+            reverse=True,
+        )[: config.build.recent_pages]
 
     template = env.get_template(template_name)
 

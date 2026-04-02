@@ -35,14 +35,22 @@ def make_page(
 
     published = page_meta.get("published")
     date_value = page_meta.get("date")
+    updated_value = page_meta.get("updated")
     modified_value = page_meta.get("modified")
 
     published_at = Page._resolve_published_at(published, date_value, file_mtime)
-    modified_at = Page._resolve_modified_at(modified_value, file_mtime, published_at)
+    modified_at = Page._resolve_modified_at(
+        updated_value, modified_value, file_mtime, published_at
+    )
 
     file_modified = None
     if file_mtime is not None:
         file_modified = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d")
+
+    explicit = parse_frontmatter_date(updated_value) or parse_frontmatter_date(
+        modified_value
+    )
+    updated_display = explicit.strftime("%Y-%m-%d") if explicit else None
 
     return Page(
         path=path,
@@ -62,6 +70,7 @@ def make_page(
         is_published=bool(published),
         published_at=published_at,
         modified_at=modified_at,
+        updated=updated_display,
     )
 
 

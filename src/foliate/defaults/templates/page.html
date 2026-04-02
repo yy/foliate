@@ -9,13 +9,13 @@
     <p class="page-dates">
         {% set creation_date = page.date if page.date else (page.published if page.published and page.published != True and page.published != 'True' and page.published != 'true' else None) %}
         {% if creation_date %}
-            {% if page.file_modified and creation_date != page.file_modified %}
-                {{ creation_date }} → {{ page.file_modified }}
+            {% if page.updated and creation_date|string != page.updated %}
+                {{ creation_date }} &rarr; {{ page.updated }}
             {% else %}
                 {{ creation_date }}
             {% endif %}
-        {% elif page.file_modified %}
-            {{ page.file_modified }}
+        {% elif page.updated %}
+            {{ page.updated }}
         {% endif %}
     </p>
     {% endif %}
@@ -32,7 +32,7 @@
     <ul class="page-list">
         {% for recent_page in recent_pages %}
         <li>
-            <span class="page-date">{{ recent_page.file_modified }}</span>
+            <span class="page-date">{{ recent_page.updated or recent_page.date or '' }}</span>
             <a href="{{ recent_page.url }}">{{ recent_page.title or recent_page.path }}</a>
         </li>
         {% endfor %}

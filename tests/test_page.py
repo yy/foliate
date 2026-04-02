@@ -121,6 +121,43 @@ class TestPageFromMarkdown:
         assert page.published_at == datetime(2024, 3, 15, tzinfo=timezone.utc)
         assert page.modified_at == datetime(2024, 3, 20, tzinfo=timezone.utc)
 
+    def test_updated_frontmatter_sets_modified_at_and_display(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {"updated": "2024-04-02"},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.modified_at == datetime(2024, 4, 2, tzinfo=timezone.utc)
+        assert page.updated == "2024-04-02"
+
+    def test_updated_takes_priority_over_modified(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {"updated": "2024-04-01", "modified": "2024-03-20"},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.modified_at == datetime(2024, 4, 1, tzinfo=timezone.utc)
+        assert page.updated == "2024-04-01"
+
+    def test_updated_display_is_none_without_explicit_frontmatter(self, tmp_path):
+        md_file = tmp_path / "page.md"
+        md_file.write_text("Body")
+
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+            file_path=md_file,
+        )
+
+        assert page.updated is None
+        assert page.file_modified is not None
+
     def test_populates_file_times_from_file_path(self, tmp_path):
         md_file = tmp_path / "page.md"
         md_file.write_text("Body")

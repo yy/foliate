@@ -83,6 +83,7 @@ class Page:
     is_published: bool = False
     published_at: datetime | None = None
     modified_at: datetime | None = None
+    updated: str | None = None
 
     @classmethod
     def from_markdown(
@@ -120,9 +121,17 @@ class Page:
 
         published = meta.get("published")
         date_value = meta.get("date")
+        updated_value = meta.get("updated")
         modified_value = meta.get("modified")
         published_at = cls._resolve_published_at(published, date_value, file_mtime)
-        modified_at = cls._resolve_modified_at(modified_value, file_mtime, published_at)
+        modified_at = cls._resolve_modified_at(
+            updated_value, modified_value, file_mtime, published_at
+        )
+
+        explicit = parse_frontmatter_date(updated_value) or parse_frontmatter_date(
+            modified_value
+        )
+        updated_display = explicit.strftime("%Y-%m-%d") if explicit else None
 
         return cls(
             path=page_path,
@@ -142,6 +151,7 @@ class Page:
             is_published=bool(published),
             published_at=published_at,
             modified_at=modified_at,
+            updated=updated_display,
         )
 
     @staticmethod
@@ -168,10 +178,15 @@ class Page:
 
     @staticmethod
     def _resolve_modified_at(
+        updated: object | None,
         modified: object | None,
         file_mtime: float | None,
         published_at: datetime | None,
     ) -> datetime | None:
+        parsed = parse_frontmatter_date(updated)
+        if parsed is not None:
+            return parsed
+
         parsed = parse_frontmatter_date(modified)
         if parsed is not None:
             return parsed
