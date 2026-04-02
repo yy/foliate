@@ -39,7 +39,7 @@ def preprocess_quarto(
         return {}
 
     try:
-        from quarto_prerender import is_quarto_available, process_all, render_qmd
+        from quarto_prerender import is_quarto_available, render_qmd
     except ImportError:
         debug("quarto-prerender not installed, skipping .qmd preprocessing")
         return {}
@@ -59,12 +59,7 @@ def preprocess_quarto(
     # quarto_python is already expanded by config loading
     quarto_python = config.advanced.quarto_python or None
 
-    if single_file:
-        # Process single file
-        qmd_file = Path(single_file).resolve()
-        if not qmd_file.exists():
-            debug(f"Quarto source missing, skipping: {qmd_file}")
-            return {}
+    def _render_source(qmd_file: Path) -> str | None:
         md_file = qmd_file.with_suffix(".md")
 
         # Check if render needed: md doesn't exist or qmd is newer
@@ -72,25 +67,47 @@ def preprocess_quarto(
             qmd_file.stat().st_mtime > md_file.stat().st_mtime
         )
 
-        if force or needs_render:
-            result = render_qmd(
-                qmd_file=qmd_file,
-                pages_dir=pages_path,
-                cache_dir=cache_dir,
-                assets_dir=assets_dir,
-                python=quarto_python,
-                verbose=False,
-            )
-            if result:
-                return {str(qmd_file): result}
+        if not force and not needs_render:
+            return str(md_file)
+
+        result = render_qmd(
+            qmd_file=qmd_file,
+            pages_dir=pages_path,
+            cache_dir=cache_dir,
+            assets_dir=assets_dir,
+            python=quarto_python,
+            verbose=False,
+        )
+        if result:
+            return str(result)
+        return None
+
+    if single_file:
+        # Process single file
+        qmd_file = Path(single_file).resolve()
+        if not qmd_file.exists():
+            debug(f"Quarto source missing, skipping: {qmd_file}")
+            return {}
+
+        result = _render_source(qmd_file)
+        if result:
+            return {str(qmd_file): result}
         return {}
 
-    # Process all .qmd files
-    return process_all(
-        pages_dir=pages_path,
-        cache_dir=cache_dir,
-        assets_dir=assets_dir,
-        python=quarto_python,
-        force=force,
-        verbose=False,
+    from .build import (
+        iter_content_source_candidates,
+        make_duplicate_warning_callback,
+        select_preferred_sources,
     )
+
+    results: dict[str, str] = {}
+    selected_sources = select_preferred_sources(
+        iter_content_source_candidates(pages_path, config, {".qmd"}),
+        on_duplicate=make_duplicate_warning_callback(pages_path, "Quarto sources"),
+    )
+    for source in selected_sources:
+        result = _render_source(source.source_file)
+        if result:
+            results[str(source.source_file)] = result
+
+    return results

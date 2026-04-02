@@ -163,6 +163,42 @@ class TestScanStatus:
         assert report.public_pages[0].state == "new"
         assert len(report.new_pages) == 1
 
+    def test_uppercase_markdown_extension_is_included(self, tmp_path):
+        """Uppercase .MD files should appear in status scans."""
+        config = _make_vault(
+            tmp_path,
+            {
+                "Guide.MD": {
+                    "content": "---\ntitle: Guide\npublic: true\n---\nHello.\n",
+                },
+            },
+        )
+
+        report = scan_status(config)
+
+        assert len(report.public_pages) == 1
+        assert report.public_pages[0].page_path == "Guide"
+        assert report.public_pages[0].state == "new"
+
+    def test_prefers_lowercase_markdown_when_case_variants_exist(self, tmp_path):
+        """Status should match build selection for duplicate extension variants."""
+        config = _make_vault(
+            tmp_path,
+            {
+                "Guide.md": {
+                    "content": "---\ntitle: Guide\npublic: true\n---\nLower.\n",
+                },
+                "Guide.MD": {
+                    "content": "---\ntitle: Guide\npublic: true\n---\nUpper.\n",
+                },
+            },
+        )
+
+        report = scan_status(config)
+
+        assert len(report.public_pages) == 1
+        assert report.public_pages[0].source_file.name == "Guide.md"
+
     def test_published_page_detected(self, tmp_path):
         """Published pages are reported correctly."""
         config = _make_vault(

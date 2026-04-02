@@ -116,3 +116,51 @@ class TestPreprocessQuarto:
 
         assert result == {}
         render_qmd.assert_not_called()
+
+    def test_bulk_mode_processes_uppercase_qmd(self, monkeypatch, tmp_path):
+        """Bulk preprocessing should discover uppercase .QMD files."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+
+        qmd_file = tmp_path / "paper.QMD"
+        qmd_file.write_text("# Test")
+        generated_md = tmp_path / "paper.md"
+
+        fake_module = types.ModuleType("quarto_prerender")
+        fake_module.is_quarto_available = lambda: True
+        render_qmd = Mock(name="render_qmd", return_value=generated_md)
+        fake_module.render_qmd = render_qmd
+        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+
+        result = preprocess_quarto(config)
+
+        assert result == {str(qmd_file): str(generated_md)}
+        render_qmd.assert_called_once()
+        assert render_qmd.call_args.kwargs["qmd_file"] == qmd_file
+
+    def test_bulk_mode_prefers_lowercase_qmd_when_case_variants_exist(
+        self, monkeypatch, tmp_path
+    ):
+        """Lowercase .qmd should keep precedence when both case variants exist."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+
+        lower_qmd = tmp_path / "paper.qmd"
+        lower_qmd.write_text("# Lower")
+        upper_qmd = tmp_path / "paper.QMD"
+        upper_qmd.write_text("# Upper")
+        generated_md = tmp_path / "paper.md"
+
+        fake_module = types.ModuleType("quarto_prerender")
+        fake_module.is_quarto_available = lambda: True
+        render_qmd = Mock(name="render_qmd", return_value=generated_md)
+        fake_module.render_qmd = render_qmd
+        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+
+        result = preprocess_quarto(config)
+
+        assert result == {str(lower_qmd): str(generated_md)}
+        render_qmd.assert_called_once()
+        assert render_qmd.call_args.kwargs["qmd_file"] == lower_qmd

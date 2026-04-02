@@ -8,7 +8,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .build import get_content_info, get_output_path, is_path_ignored
+from .build import (
+    get_output_path,
+    iter_content_source_candidates,
+    make_duplicate_warning_callback,
+    select_preferred_sources,
+)
 from .config import Config
 from .markdown_utils import parse_markdown_file
 from .quarto import is_quarto_preprocessing_available
@@ -151,9 +156,6 @@ def scan_status(config: Config) -> StatusReport:
     if not vault_path or not vault_path.exists():
         return StatusReport(pages=[])
 
-    ignored_folders = config.build.ignored_folders
-    homepage_dir = config.build.homepage_dir
-    wiki_base_url = config.base_urls["wiki"]
     wiki_dir_name = config.build.wiki_prefix.strip("/")
 
     build_dir = config.get_build_dir()
@@ -161,59 +163,27 @@ def scan_status(config: Config) -> StatusReport:
     last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else None
 
     pages: list[PageStatus] = []
-    selected_files: dict[str, tuple[Path, str, str, bool]] = {}
-
     # Keep dry-run/status aligned with build(): qmd-only pages are buildable
     # only when Quarto preprocessing can actually run in this environment.
-    globs = ["**/*.md"]
+    allowed_suffixes = {".md"}
     if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
-        globs.append("**/*.qmd")
-    source_files = sorted(f for pattern in globs for f in vault_path.glob(pattern))
+        allowed_suffixes.add(".qmd")
 
-    for md_file in source_files:
-        if is_path_ignored(md_file, vault_path, ignored_folders):
-            continue
+    selected_sources = select_preferred_sources(
+        iter_content_source_candidates(vault_path, config, allowed_suffixes),
+        on_duplicate=make_duplicate_warning_callback(vault_path, "source files"),
+    )
 
-        # Skip files inside .foliate/
-        try:
-            rel_path = md_file.relative_to(vault_path)
-            if rel_path.parts and rel_path.parts[0] == ".foliate":
-                continue
-        except ValueError:
-            continue
-
-        page_path = rel_path.with_suffix("").as_posix()
-        page_path, content_base_url, is_homepage = get_content_info(
-            page_path, homepage_dir, wiki_base_url
-        )
-
-        existing = selected_files.get(page_path)
-        if existing is not None:
-            existing_file = existing[0]
-            if existing_file.suffix.lower() == ".md":
-                continue
-            if md_file.suffix.lower() == ".md":
-                selected_files[page_path] = (
-                    md_file,
-                    page_path,
-                    content_base_url,
-                    is_homepage,
-                )
-            continue
-
-        selected_files[page_path] = (md_file, page_path, content_base_url, is_homepage)
-
-    for md_file, page_path, content_base_url, is_homepage in selected_files.values():
-
-        meta, _ = parse_markdown_file(md_file)
+    for source in selected_sources:
+        meta, _ = parse_markdown_file(source.source_file)
         is_public = bool(meta.get("public", False))
         is_published = bool(meta.get("published", False))
 
         if is_public:
             state = _get_page_state(
-                md_file,
-                page_path,
-                content_base_url,
+                source.source_file,
+                source.page_path,
+                source.base_url,
                 build_dir,
                 wiki_dir_name,
                 deploy_dir=deploy_dir,
@@ -224,10 +194,10 @@ def scan_status(config: Config) -> StatusReport:
 
         pages.append(
             PageStatus(
-                page_path=page_path,
-                source_file=md_file,
-                base_url=content_base_url,
-                is_homepage_content=is_homepage,
+                page_path=source.page_path,
+                source_file=source.source_file,
+                base_url=source.base_url,
+                is_homepage_content=source.is_homepage_content,
                 public=is_public,
                 published=is_published,
                 state=state,

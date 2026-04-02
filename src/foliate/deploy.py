@@ -67,7 +67,7 @@ def is_build_stale(config: Config) -> bool | None:
 
 def _collect_public_source_paths(config: Config) -> set[str]:
     """Return the current set of public markdown source files in the vault."""
-    from .build import is_path_ignored
+    from .build import iter_content_source_candidates, select_preferred_sources
     from .markdown_utils import parse_markdown_file
 
     vault_path = config.vault_path
@@ -75,23 +75,14 @@ def _collect_public_source_paths(config: Config) -> set[str]:
         return set()
 
     public_sources: set[str] = set()
-    for source_file in vault_path.rglob("*.md"):
-        if not source_file.is_file():
-            continue
+    selected_sources = select_preferred_sources(
+        iter_content_source_candidates(vault_path, config, {".md"})
+    )
 
-        try:
-            rel_path = source_file.relative_to(vault_path)
-        except ValueError:
-            continue
-
-        if rel_path.parts and rel_path.parts[0] == ".foliate":
-            continue
-        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
-            continue
-
-        meta, _ = parse_markdown_file(source_file)
+    for source in selected_sources:
+        meta, _ = parse_markdown_file(source.source_file)
         if bool(meta.get("public", False)):
-            public_sources.add(str(source_file))
+            public_sources.add(str(source.source_file))
 
     return public_sources
 
@@ -163,7 +154,7 @@ def _get_newest_source_mtime(config: Config) -> float:
         Most recent mtime, or 0 if no files found
     """
     from .assets import SUPPORTED_ASSET_EXTENSIONS
-    from .build import is_path_ignored
+    from .build import is_path_ignored, iter_source_files
 
     max_mtime = 0.0
     vault_path = config.vault_path
@@ -172,12 +163,7 @@ def _get_newest_source_mtime(config: Config) -> float:
         return max_mtime
 
     # Check markdown and quarto files (excluding ignored folders and .foliate directory)
-    for source_file in vault_path.rglob("*"):
-        if not source_file.is_file():
-            continue
-        if source_file.suffix.lower() not in {".md", ".qmd"}:
-            continue
-
+    for source_file in iter_source_files(vault_path, {".md", ".qmd"}):
         # Skip .foliate directory
         try:
             rel_path = source_file.relative_to(vault_path)

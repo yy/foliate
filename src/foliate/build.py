@@ -1,7 +1,8 @@
 """Core build logic for foliate static site generator."""
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -115,6 +116,145 @@ def get_output_path(
     return build_dir / wiki_dir_name / output_path / "index.html"
 
 
+@dataclass(frozen=True)
+class SourceCandidate:
+    """Resolved metadata for a content source file."""
+
+    source_file: Path
+    page_path: str
+    base_url: str
+    is_homepage_content: bool
+
+
+def iter_source_files(vault_path: Path, suffixes: set[str]) -> Iterator[Path]:
+    """Iterate source files matching the given suffixes, case-insensitively."""
+    matching = [
+        f for f in vault_path.rglob("*") if f.is_file() and f.suffix.lower() in suffixes
+    ]
+    matching.sort()
+    yield from matching
+
+
+def make_duplicate_warning_callback(
+    base_path: Path,
+    label: str = "sources",
+) -> Callable[[str, "SourceCandidate", list["SourceCandidate"]], None]:
+    """Create a callback that warns about duplicate source candidates."""
+    from .logging import warning
+
+    def _warn(
+        page_path: str,
+        chosen: SourceCandidate,
+        ignored: list[SourceCandidate],
+    ) -> None:
+        def _display(candidate: SourceCandidate) -> str:
+            try:
+                return candidate.source_file.relative_to(base_path).as_posix()
+            except ValueError:
+                return str(candidate.source_file)
+
+        ignored_display = ", ".join(_display(c) for c in ignored)
+        warning(
+            f"Multiple {label} map to '{page_path}'. "
+            f"Using '{_display(chosen)}'; ignoring {ignored_display}."
+        )
+
+    return _warn
+
+
+def iter_content_source_candidates(
+    vault_path: Path,
+    config: Config,
+    suffixes: set[str],
+) -> Iterator[SourceCandidate]:
+    """Iterate candidate content sources with resolved page metadata."""
+    ignored_folders = config.build.ignored_folders
+    homepage_dir = config.build.homepage_dir
+    wiki_base_url = config.base_urls["wiki"]
+
+    for source_file in iter_source_files(vault_path, suffixes):
+        if is_path_ignored(source_file, vault_path, ignored_folders):
+            continue
+
+        try:
+            rel_path = source_file.relative_to(vault_path)
+        except ValueError:
+            continue
+
+        # Never treat .foliate internals as content pages.
+        if rel_path.parts and rel_path.parts[0] == ".foliate":
+            continue
+
+        page_path = rel_path.with_suffix("").as_posix()
+        page_path, base_url, is_homepage_content = get_content_info(
+            page_path, homepage_dir, wiki_base_url
+        )
+
+        yield SourceCandidate(
+            source_file=source_file,
+            page_path=page_path,
+            base_url=base_url,
+            is_homepage_content=is_homepage_content,
+        )
+
+
+def _source_priority(candidate: SourceCandidate) -> tuple[int, str]:
+    """Return a stable preference key for duplicate source candidates."""
+    suffix = candidate.source_file.suffix
+    lowered_suffix = suffix.lower()
+    suffix_priority = {".md": 0, ".qmd": 2}.get(lowered_suffix, 4)
+    case_penalty = 0 if suffix == lowered_suffix else 1
+    return suffix_priority + case_penalty, candidate.source_file.as_posix()
+
+
+def _has_ambiguous_duplicate_candidates(candidates: list[SourceCandidate]) -> bool:
+    """Return True when duplicate candidates share the same logical suffix."""
+    seen_suffixes: set[str] = set()
+    for candidate in candidates:
+        lowered_suffix = candidate.source_file.suffix.lower()
+        if lowered_suffix in seen_suffixes:
+            return True
+        seen_suffixes.add(lowered_suffix)
+    return False
+
+
+def select_preferred_sources(
+    candidates: Iterable[SourceCandidate],
+    on_duplicate: Callable[[str, SourceCandidate, list[SourceCandidate]], None]
+    | None = None,
+) -> list[SourceCandidate]:
+    """Select one preferred source for each page path."""
+    grouped_candidates: dict[str, list[SourceCandidate]] = {}
+    selected: dict[str, SourceCandidate] = {}
+
+    for candidate in candidates:
+        grouped_candidates.setdefault(candidate.page_path, []).append(candidate)
+
+        existing = selected.get(candidate.page_path)
+        if existing is None or _source_priority(candidate) < _source_priority(existing):
+            selected[candidate.page_path] = candidate
+
+    if on_duplicate is not None:
+        for page_path, page_candidates in grouped_candidates.items():
+            if len(page_candidates) < 2 or not _has_ambiguous_duplicate_candidates(
+                page_candidates
+            ):
+                continue
+
+            chosen = selected[page_path]
+            ignored = sorted(
+                (
+                    candidate
+                    for candidate in page_candidates
+                    if candidate.source_file != chosen.source_file
+                ),
+                key=lambda candidate: candidate.source_file.as_posix(),
+            )
+            on_duplicate(page_path, chosen, ignored)
+
+    return list(selected.values())
+
+
 def _resolve_redirect_target(
     target_path: str,
     public_pages: list[Page],
@@ -208,23 +348,15 @@ def iter_public_md_files(
     """
     from .logging import debug
 
-    ignored_folders = config.build.ignored_folders
-    homepage_dir = config.build.homepage_dir
-    wiki_base_url = config.base_urls["wiki"]
+    selected_sources = select_preferred_sources(
+        iter_content_source_candidates(vault_path, config, {".md"}),
+        on_duplicate=make_duplicate_warning_callback(vault_path, "markdown sources"),
+    )
 
-    for md_file in vault_path.glob("**/*.md"):
-        if is_path_ignored(md_file, vault_path, ignored_folders):
-            continue
-
-        rel_path = md_file.relative_to(vault_path)
-        # Never treat .foliate internals as content pages.
-        if rel_path.parts and rel_path.parts[0] == ".foliate":
-            continue
-        page_path = rel_path.with_suffix("").as_posix()
-
-        page_path, content_base_url, _ = get_content_info(
-            page_path, homepage_dir, wiki_base_url
-        )
+    for source in selected_sources:
+        md_file = source.source_file
+        page_path = source.page_path
+        content_base_url = source.base_url
 
         if single_page and page_path != single_page:
             continue
@@ -241,6 +373,38 @@ def iter_public_md_files(
                 continue
 
         yield md_file, page_path, content_base_url, meta, markdown_content
+
+
+def _get_output_paths_for_source(
+    source_path: str | Path,
+    build_dir: Path,
+    vault_path: Path,
+    config: Config,
+) -> list[Path]:
+    """Return all build outputs that belong to a source path."""
+    try:
+        rel_path = Path(source_path).relative_to(vault_path)
+    except ValueError:
+        return []
+
+    page_path = rel_path.with_suffix("").as_posix()
+    page_path, base_url, _ = get_content_info(
+        page_path, config.build.homepage_dir, config.base_urls["wiki"]
+    )
+    wiki_dir_name = config.build.wiki_prefix.strip("/")
+
+    paths_to_remove = [
+        get_output_path(build_dir, page_path, base_url, wiki_dir_name),
+    ]
+    if config.build.slugify_urls:
+        slugged = slugify_path(page_path)
+        if slugged != page_path:
+            paths_to_remove.append(
+                get_output_path(
+                    build_dir, page_path, base_url, wiki_dir_name, slugify=True
+                )
+            )
+    return paths_to_remove
 
 
 def process_single_md_file(
@@ -394,34 +558,21 @@ def remove_stale_pages(
     if not stale_sources:
         return 0
 
-    homepage_dir = config.build.homepage_dir
-    wiki_base_url = config.base_urls["wiki"]
-    wiki_dir_name = config.build.wiki_prefix.strip("/")
     removed = 0
+    protected_outputs = {
+        output_file
+        for source_path in new_sources
+        for output_file in _get_output_paths_for_source(
+            source_path, build_dir, vault_path, config
+        )
+    }
 
     for source_path in stale_sources:
-        try:
-            rel_path = Path(source_path).relative_to(vault_path)
-        except ValueError:
-            continue
-        page_path = rel_path.with_suffix("").as_posix()
-        page_path, base_url, _ = get_content_info(
-            page_path, homepage_dir, wiki_base_url
-        )
-        # Remove both slugified and original paths
-        paths_to_remove = [
-            get_output_path(build_dir, page_path, base_url, wiki_dir_name),
-        ]
-        if config.build.slugify_urls:
-            slugged = slugify_path(page_path)
-            if slugged != page_path:
-                paths_to_remove.append(
-                    get_output_path(
-                        build_dir, page_path, base_url, wiki_dir_name, slugify=True
-                    )
-                )
-
-        for output_file in paths_to_remove:
+        for output_file in _get_output_paths_for_source(
+            source_path, build_dir, vault_path, config
+        ):
+            if output_file in protected_outputs:
+                continue
             if output_file.exists():
                 output_file.unlink()
                 debug(f"  Removed stale: {output_file.relative_to(build_dir)}")
@@ -753,9 +904,14 @@ def build(
     if incremental and config.config_path:
         from .cache import update_global_deps_cache
 
-        update_global_deps_cache(new_build_cache, config.config_path, vault_path)
+        cache_to_save = new_build_cache
+        if single_page and not force_rebuild:
+            cache_to_save = build_cache.copy()
+            cache_to_save.update(new_build_cache)
+
+        update_global_deps_cache(cache_to_save, config.config_path, vault_path)
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        save_build_cache(cache_file, new_build_cache)
+        save_build_cache(cache_file, cache_to_save)
 
     # Print summary
     _print_build_summary(

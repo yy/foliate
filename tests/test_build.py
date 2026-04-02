@@ -3,6 +3,7 @@
 from jinja2 import Environment
 
 from foliate import build
+from foliate.cache import BUILD_CACHE_FILE, load_build_cache
 from foliate.config import Config
 from foliate.page import Page
 from foliate.templates import get_template_loader
@@ -244,6 +245,94 @@ This is a test page.
         assert (
             vault_path / ".foliate" / "build" / "wiki" / "test" / "index.html"
         ).exists()
+
+    def test_builds_uppercase_markdown_extension(self, tmp_path):
+        """Uppercase .MD files should be discovered and built."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "Guide"
+"""
+        )
+
+        page = vault_path / "Guide.MD"
+        page.write_text(
+            """---
+title: Guide
+public: true
+---
+
+# Guide
+
+Uppercase markdown extension.
+"""
+        )
+
+        config = Config.load(config_path)
+        result = build.build(config=config, force_rebuild=True)
+
+        assert result >= 1
+        assert (
+            vault_path / ".foliate" / "build" / "wiki" / "Guide" / "index.html"
+        ).exists()
+
+    def test_prefers_lowercase_markdown_when_case_variants_exist(self, tmp_path):
+        """Lowercase .md should keep precedence when both case variants exist."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://test.com"
+
+[build]
+home_redirect = "Guide"
+"""
+        )
+
+        (vault_path / "Guide.md").write_text(
+            """---
+title: Guide
+public: true
+---
+
+Lowercase markdown wins.
+"""
+        )
+        (vault_path / "Guide.MD").write_text(
+            """---
+title: Guide
+public: true
+---
+
+Uppercase markdown duplicate.
+"""
+        )
+
+        config = Config.load(config_path)
+        result = build.build(config=config, force_rebuild=True)
+
+        output = vault_path / ".foliate" / "build" / "wiki" / "Guide" / "index.html"
+        build_cache = load_build_cache(config.get_cache_dir() / BUILD_CACHE_FILE)
+        assert result == 1
+        assert output.exists()
+        assert str(vault_path / "Guide.md") in build_cache
+        assert str(vault_path / "Guide.MD") not in build_cache
 
     def test_build_homepage_content(self, tmp_path):
         """Homepage content is built at root."""
@@ -701,6 +790,45 @@ url = "https://example.com"
         assert len(search_after) == 2
         assert sitemap_before == sitemap_after
 
+    def test_single_page_build_preserves_incremental_cache_for_other_pages(
+        self, tmp_path
+    ):
+        """single_page build should keep unrelated pages in the build cache."""
+        import json
+
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+url = "https://example.com"
+"""
+        )
+
+        alpha = vault_path / "Alpha.md"
+        beta = vault_path / "Beta.md"
+        alpha.write_text("---\npublic: true\n---\nAlpha")
+        beta.write_text("---\npublic: true\n---\nBeta")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True)
+
+        alpha.write_text("---\npublic: true\n---\nAlpha updated")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=False, single_page="Alpha")
+
+        cache_file = vault_path / ".foliate" / "cache" / ".build_cache"
+        cache = json.loads(cache_file.read_text())
+
+        assert str(alpha) in cache
+        assert str(beta) in cache
+
 
 class TestStalePageRemoval:
     """Tests for stale page cleanup during incremental builds."""
@@ -788,6 +916,32 @@ home_redirect = "test"
         # Both the page dir and the Notes dir under wiki should be gone
         assert not output_dir.exists()
         assert not (vault_path / ".foliate" / "build" / "wiki" / "Notes").exists()
+
+    def test_stale_cleanup_preserves_shared_output_when_alias_was_deleted(
+        self, tmp_path
+    ):
+        """Deleting one extension alias should not remove the surviving page output."""
+        vault_path, config_path = self._make_vault(tmp_path)
+        config = Config.load(config_path)
+
+        output = vault_path / ".foliate" / "build" / "wiki" / "Guide" / "index.html"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("<html>Guide</html>")
+
+        old_cache = {
+            str(vault_path / "Guide.md"): 1.0,
+            str(vault_path / "Guide.MD"): 1.0,
+        }
+        new_cache = {
+            str(vault_path / "Guide.md"): 1.0,
+        }
+
+        removed = build.remove_stale_pages(
+            config.get_build_dir(), vault_path, old_cache, new_cache, config
+        )
+
+        assert removed == 0
+        assert output.exists()
 
     def test_no_stale_cleanup_on_force_rebuild(self, tmp_path):
         """Force rebuild wipes the build dir, so stale cleanup is not needed."""
