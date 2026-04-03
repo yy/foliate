@@ -443,3 +443,48 @@ class TestMarkdownConverterCaching:
         assert second == "second"
         assert dummy.reset_calls == 2
         assert dummy.convert_calls == 2
+
+    def test_render_markdown_skips_npx_only_katex_probe(
+        self, monkeypatch, tmp_path
+    ):
+        """Plain markdown should not probe npx while configuring KaTeX."""
+        import markdown_katex.wrapper as katex_wrapper
+
+        fake_npx = tmp_path / "npx"
+        fake_npx.write_text("", encoding="utf-8")
+
+        original_parsed_options = katex_wrapper._PARSED_OPTIONS.copy()
+        original_converters = markdown_utils._MARKDOWN_CONVERTERS
+
+        try:
+            katex_wrapper._PARSED_OPTIONS.clear()
+            markdown_utils._MARKDOWN_CONVERTERS = threading.local()
+            markdown_utils.configure_extensions(nl2br=False)
+
+            monkeypatch.delattr(
+                katex_wrapper, "_foliate_npx_probe_disabled", raising=False
+            )
+            monkeypatch.setattr(katex_wrapper, "_get_env_paths", lambda: [tmp_path])
+            monkeypatch.setattr(
+                katex_wrapper,
+                "_get_local_bin_candidates",
+                lambda: ["npx --no-install katex"],
+            )
+
+            def _fail_if_npx_is_probed(*args, **kwargs):
+                raise AssertionError("npx probe should be skipped")
+
+            monkeypatch.setattr(
+                katex_wrapper.sp,
+                "check_output",
+                _fail_if_npx_is_probed,
+            )
+
+            result = markdown_utils.render_markdown("plain text")
+
+            assert "<p>plain text</p>" in result
+        finally:
+            katex_wrapper._PARSED_OPTIONS.clear()
+            katex_wrapper._PARSED_OPTIONS.update(original_parsed_options)
+            markdown_utils._MARKDOWN_CONVERTERS = original_converters
+            markdown_utils.configure_extensions(nl2br=False)

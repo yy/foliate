@@ -15,6 +15,7 @@ def _dry_run_has_rsync_changes(rsync_stdout: str) -> bool:
 
     noise_prefixes = (
         "sending incremental file list",
+        "Transfer starting:",
         "sent ",
         "total size is ",
         "created directory ",
@@ -330,6 +331,9 @@ def deploy_github_pages(
     rsync_args = [
         "rsync",
         "-av",
+        # Compare file contents, not just mtimes, so rebuilds that produce
+        # identical HTML do not create noisy deploy previews or no-op syncs.
+        "--checksum",
         "--delete",
         "--exclude=.git",  # Preserve target's git repo
     ]

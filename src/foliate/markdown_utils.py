@@ -83,6 +83,35 @@ _SLUGIFY_URLS_ENABLED = False
 _WIKI_BASE_URL = "/wiki/"
 
 
+def _disable_markdown_katex_npx_probe() -> None:
+    """Prevent markdown-katex from shelling out to interactive npx probes.
+
+    markdown-katex checks PATH for both `katex` and `npx --no-install katex`.
+    In direct CLI environments, the npx probe can block waiting for input even
+    when the page contains no math. Keep direct katex executables discoverable,
+    but drop the npx fallback so plain markdown builds stay non-blocking.
+    """
+    try:
+        from markdown_katex import wrapper
+    except ImportError:
+        return
+
+    if getattr(wrapper, "_foliate_npx_probe_disabled", False):
+        return
+
+    original_get_local_bin_candidates = wrapper._get_local_bin_candidates
+
+    def _get_local_bin_candidates_without_npx() -> list[str]:
+        return [
+            candidate
+            for candidate in original_get_local_bin_candidates()
+            if Path(candidate.split()[0]).stem.lower() != "npx"
+        ]
+
+    wrapper._get_local_bin_candidates = _get_local_bin_candidates_without_npx
+    wrapper._foliate_npx_probe_disabled = True
+
+
 def slugify_path(path: str) -> str:
     """Replace spaces with hyphens in each segment of a URL path.
 
@@ -243,6 +272,7 @@ def get_markdown_converter(base_url: str) -> markdown.Markdown:
     if cached is not None:
         return cached
 
+    _disable_markdown_katex_npx_probe()
     converter = markdown.Markdown(
         extensions=_get_extensions(),
         extension_configs=_build_extension_configs(base_url),

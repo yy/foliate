@@ -456,6 +456,7 @@ class TestDeployGithubPages:
             assert called_args[0] == "rsync"
             assert "--dry-run" in called_args
             assert "--itemize-changes" in called_args
+            assert "--checksum" in called_args
             info_messages = [call.args[0] for call in mock_info.call_args_list]
             assert any("Would commit with message:" in msg for msg in info_messages)
 
@@ -492,6 +493,38 @@ class TestDeployGithubPages:
 
             assert result is True
             mock_run.assert_called_once()
+            called_args = mock_run.call_args[0][0]
+            assert "--checksum" in called_args
+            info_messages = [call.args[0] for call in mock_info.call_args_list]
+            assert any("No changes to deploy" in msg for msg in info_messages)
+            assert not any("Would commit with message:" in msg for msg in info_messages)
+
+    @patch("foliate.logging.info")
+    def test_dry_run_ignores_mtime_only_differences(self, mock_info):
+        """Identical files with different mtimes should not look deployable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+
+            target_dir = Path(tmpdir) / "target"
+            target_dir.mkdir()
+            (target_dir / ".git").mkdir()
+            config.deploy = DeployConfig(target=str(target_dir))
+
+            target_file = target_dir / "index.html"
+            target_file.write_text("<html>same</html>")
+
+            time.sleep(0.05)
+            build_file = build_dir / "index.html"
+            build_file.write_text("<html>same</html>")
+            assert build_file.stat().st_mtime > target_file.stat().st_mtime
+
+            result = deploy_github_pages(config, dry_run=True)
+
+            assert result is True
             info_messages = [call.args[0] for call in mock_info.call_args_list]
             assert any("No changes to deploy" in msg for msg in info_messages)
             assert not any("Would commit with message:" in msg for msg in info_messages)
