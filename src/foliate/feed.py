@@ -199,6 +199,68 @@ def create_feed_items(
     return items
 
 
+def _select_feed_pages(pages: list[Page], wiki_prefix: str) -> list[Page]:
+    """Select pages eligible for inclusion in the Atom feed."""
+    if not wiki_prefix:
+        return pages
+
+    wiki_url_prefix = f"/{wiki_prefix}/"
+    return [page for page in pages if page.url.startswith(wiki_url_prefix)]
+
+
+def _remove_stale_feed(output_dir: Path) -> None:
+    """Remove a previously generated feed file, if present."""
+    feed_file = output_dir / "feed.xml"
+    if feed_file.exists():
+        feed_file.unlink()
+
+
+def _create_updates_entry(
+    updated_pages: list[Page], site_url: str
+) -> dict[str, str] | None:
+    """Create template data for the updates digest entry."""
+    if not updated_pages:
+        return None
+
+    most_recent_update = updated_pages[0].modified_at
+    if most_recent_update is None:
+        return None
+
+    return {
+        "content": generate_updates_digest(updated_pages, site_url),
+        "updated": format_atom_date(most_recent_update),
+    }
+
+
+def _get_feed_updated(
+    new_items: list[FeedItem], updated_pages: list[Page], now: datetime
+) -> datetime:
+    """Return the newest timestamp across all feed entries."""
+    all_dates = [item.updated for item in new_items]
+
+    if updated_pages:
+        latest_update = updated_pages[0].modified_at
+        if latest_update is not None:
+            all_dates.append(latest_update)
+
+    return max(all_dates, default=now)
+
+
+def _format_template_items(items: list[FeedItem]) -> list[dict[str, str | None]]:
+    """Convert feed items into template-friendly dictionaries."""
+    return [
+        {
+            "title": item.title,
+            "url": item.url,
+            "published": format_atom_date(item.published),
+            "updated": format_atom_date(item.updated),
+            "content": item.content,
+            "summary": item.summary,
+        }
+        for item in items
+    ]
+
+
 def generate_feed(
     pages: list[Page],
     config: "Config",
@@ -222,32 +284,14 @@ def generate_feed(
     site_url = config.site.url.rstrip("/")
     now = datetime.now(timezone.utc)
 
-    # Filter out homepage content (only include wiki pages)
     wiki_prefix = config.build.wiki_prefix.strip("/")
-    wiki_url_prefix = f"/{wiki_prefix}/" if wiki_prefix else "/"
-
-    # Only include pages whose URL starts with wiki prefix
-    # This excludes _homepage/ content which goes to /
-    wiki_pages = [p for p in pages if p.url.startswith(wiki_url_prefix)]
-
-    # If wiki prefix is empty, we can't distinguish - include all pages
-    # Otherwise, only include wiki pages
-    if wiki_prefix:
-        feed_pages = wiki_pages
-    else:
-        feed_pages = pages
-
-    # Classify pages
+    feed_pages = _select_feed_pages(pages, wiki_prefix)
     new_pages, updated_pages = classify_pages(feed_pages, feed_config.window, now)
 
-    # If no pages in either category, remove stale feed and skip generation
     if not new_pages and not updated_pages:
-        feed_file = output_dir / "feed.xml"
-        if feed_file.exists():
-            feed_file.unlink()
+        _remove_stale_feed(output_dir)
         return
 
-    # Create feed items for new pages
     new_items = create_feed_items(
         new_pages,
         site_url,
@@ -255,45 +299,12 @@ def generate_feed(
         feed_config.items,
     )
 
-    # Create updates digest entry if there are updated pages
-    updates_entry = None
-    if updated_pages:
-        digest_content = generate_updates_digest(updated_pages, site_url)
-        most_recent_update = updated_pages[0].modified_at
-        if most_recent_update is not None:
-            updates_entry = {
-                "content": digest_content,
-                "updated": format_atom_date(most_recent_update),
-            }
-
-    # Determine feed metadata
+    updates_entry = _create_updates_entry(updated_pages, site_url)
     feed_title = feed_config.title or config.site.name
     feed_description = feed_config.description or f"{config.site.name} - Recent updates"
+    feed_updated = _get_feed_updated(new_items, updated_pages, now)
+    formatted_items = _format_template_items(new_items)
 
-    # Determine feed updated time (most recent of all entries)
-    all_dates: list[datetime] = []
-    if new_items:
-        all_dates.extend(item.updated for item in new_items)
-    if updates_entry and updated_pages:
-        updated_at = updated_pages[0].modified_at
-        if updated_at is not None:
-            all_dates.append(updated_at)
-    feed_updated = max(all_dates) if all_dates else now
-
-    # Format items for template
-    formatted_items = [
-        {
-            "title": item.title,
-            "url": item.url,
-            "published": format_atom_date(item.published),
-            "updated": format_atom_date(item.updated),
-            "content": item.content,
-            "summary": item.summary,
-        }
-        for item in new_items
-    ]
-
-    # Render feed template
     try:
         template = templates.get_template("feed.xml")
     except Exception as e:
