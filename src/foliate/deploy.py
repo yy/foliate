@@ -31,6 +31,90 @@ def _dry_run_has_rsync_changes(rsync_stdout: str) -> bool:
     return False
 
 
+def _files_have_same_contents(source: Path, target: Path) -> bool:
+    """Return True when two files contain identical bytes."""
+    if source.stat().st_size != target.stat().st_size:
+        return False
+
+    chunk_size = 8192
+    with source.open("rb") as source_handle, target.open("rb") as target_handle:
+        while True:
+            source_chunk = source_handle.read(chunk_size)
+            target_chunk = target_handle.read(chunk_size)
+            if source_chunk != target_chunk:
+                return False
+            if not source_chunk:
+                return True
+
+
+def _dry_run_trees_match(
+    build_dir: Path, target_dir: Path, exclude_patterns: list[str]
+) -> bool | None:
+    """Return whether build and target trees already match for deploy purposes.
+
+    Ignores `.git` metadata and directory mtimes so dry-run deploy checks do not
+    depend on rsync for identical-content comparisons.
+    """
+    literal_exclude_names: set[str] = set()
+    literal_exclude_paths: set[tuple[str, ...]] = set()
+
+    for pattern in exclude_patterns:
+        if any(char in pattern for char in "*?[]{}!"):
+            return None
+        normalized = pattern.strip("/")
+        if not normalized:
+            return None
+        parts = tuple(Path(normalized).parts)
+        if len(parts) == 1:
+            literal_exclude_names.add(parts[0])
+        else:
+            literal_exclude_paths.add(parts)
+
+    def is_ignored(rel_path: Path) -> bool:
+        return (
+            ".git" in rel_path.parts
+            or rel_path.name in literal_exclude_names
+            or rel_path.parts in literal_exclude_paths
+        )
+
+    def collect_entries(root: Path) -> dict[Path, str] | None:
+        root_entries: dict[Path, str] = {}
+        try:
+            for path in root.rglob("*"):
+                rel_path = path.relative_to(root)
+                if is_ignored(rel_path):
+                    continue
+                if path.is_symlink():
+                    return None
+                if path.is_dir():
+                    root_entries[rel_path] = "dir"
+                elif path.is_file():
+                    root_entries[rel_path] = "file"
+                else:
+                    return None
+        except OSError:
+            return None
+        return root_entries
+
+    build_entries = collect_entries(build_dir)
+    target_entries = collect_entries(target_dir)
+    if build_entries is None or target_entries is None:
+        return None
+    if build_entries != target_entries:
+        return False
+
+    for rel_path, entry_type in build_entries.items():
+        if entry_type != "file":
+            continue
+        try:
+            if not _files_have_same_contents(build_dir / rel_path, target_dir / rel_path):
+                return False
+        except OSError:
+            return None
+
+    return True
+
+
 def is_build_stale(config: Config) -> bool | None:
     """Check if the build directory is stale (source files modified after build).
 
@@ -304,6 +388,12 @@ def deploy_github_pages(
     if not git_dir.exists():
         error(f"Deploy target is not a git repository: {target}")
         return False
+
+    if dry_run:
+        trees_match = _dry_run_trees_match(build_dir, target, config.deploy.exclude)
+        if trees_match:
+            info("No changes to deploy")
+            return True
 
     # Pull latest from remote to avoid conflicts when deploying from multiple machines
     if not dry_run:

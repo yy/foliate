@@ -92,7 +92,7 @@ def _disable_markdown_katex_npx_probe() -> None:
     but drop the npx fallback so plain markdown builds stay non-blocking.
     """
     try:
-        from markdown_katex import wrapper
+        from markdown_katex import wrapper  # type: ignore[import-untyped]
     except ImportError:
         return
 

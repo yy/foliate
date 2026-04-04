@@ -500,7 +500,8 @@ class TestDeployGithubPages:
             assert not any("Would commit with message:" in msg for msg in info_messages)
 
     @patch("foliate.logging.info")
-    def test_dry_run_ignores_mtime_only_differences(self, mock_info):
+    @patch("foliate.deploy.subprocess.run")
+    def test_dry_run_ignores_mtime_only_differences(self, mock_run, mock_info):
         """Identical files with different mtimes should not look deployable."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = Config()
@@ -525,6 +526,7 @@ class TestDeployGithubPages:
             result = deploy_github_pages(config, dry_run=True)
 
             assert result is True
+            mock_run.assert_not_called()
             info_messages = [call.args[0] for call in mock_info.call_args_list]
             assert any("No changes to deploy" in msg for msg in info_messages)
             assert not any("Would commit with message:" in msg for msg in info_messages)
