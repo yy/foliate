@@ -171,7 +171,11 @@ def watch(port: int, verbose: bool):
 @main.command()
 def clean():
     """Remove build artifacts."""
-    foliate_dir = Path.cwd() / ".foliate"
+    start_path = Path.cwd()
+    config_path = Config.find_config(start_path)
+    foliate_dir = (
+        config_path.parent if config_path is not None else start_path / ".foliate"
+    )
     build_dir = foliate_dir / "build"
     cache_dir = foliate_dir / "cache"
 

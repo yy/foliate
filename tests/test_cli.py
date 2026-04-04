@@ -1,5 +1,6 @@
 """Tests for CLI commands."""
 
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -307,6 +308,34 @@ class TestCleanCommand:
 
             assert result.exit_code == 0
             assert config_file.exists()
+
+    def test_finds_project_root_from_nested_directory(self):
+        """Should clean project artifacts when invoked from a nested directory."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            runner.invoke(main, ["init"])
+
+            project_root = Path.cwd()
+            build_dir = project_root / ".foliate" / "build"
+            cache_dir = project_root / ".foliate" / "cache"
+            build_dir.mkdir(parents=True)
+            cache_dir.mkdir(parents=True)
+            (build_dir / "test.html").write_text("<html></html>")
+            (cache_dir / "cache.json").write_text("{}")
+
+            nested_dir = project_root / "notes" / "subdir"
+            nested_dir.mkdir(parents=True)
+
+            original_cwd = Path.cwd()
+            os.chdir(nested_dir)
+            try:
+                result = runner.invoke(main, ["clean"])
+            finally:
+                os.chdir(original_cwd)
+
+            assert result.exit_code == 0
+            assert not build_dir.exists()
+            assert not cache_dir.exists()
 
 
 class TestDoctorCommand:
