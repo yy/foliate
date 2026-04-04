@@ -68,7 +68,7 @@ def is_build_stale(config: Config) -> bool | None:
 
 def _collect_public_source_paths(config: Config) -> set[str]:
     """Return the current set of public markdown source files in the vault."""
-    from .build import iter_content_source_candidates, select_preferred_sources
+    from .build import select_content_sources
     from .markdown_utils import parse_markdown_file
 
     vault_path = config.vault_path
@@ -76,9 +76,7 @@ def _collect_public_source_paths(config: Config) -> set[str]:
         return set()
 
     public_sources: set[str] = set()
-    selected_sources = select_preferred_sources(
-        iter_content_source_candidates(vault_path, config, {".md"})
-    )
+    selected_sources = select_content_sources(vault_path, config, {".md"})
 
     for source in selected_sources:
         meta, _ = parse_markdown_file(source.source_file)

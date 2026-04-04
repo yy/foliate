@@ -10,9 +10,7 @@ from pathlib import Path
 
 from .build import (
     get_output_path,
-    iter_content_source_candidates,
-    make_duplicate_warning_callback,
-    select_preferred_sources,
+    select_content_sources,
 )
 from .config import Config
 from .markdown_utils import parse_markdown_file
@@ -169,9 +167,11 @@ def scan_status(config: Config) -> StatusReport:
     if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
         allowed_suffixes.add(".qmd")
 
-    selected_sources = select_preferred_sources(
-        iter_content_source_candidates(vault_path, config, allowed_suffixes),
-        on_duplicate=make_duplicate_warning_callback(vault_path, "source files"),
+    selected_sources = select_content_sources(
+        vault_path,
+        config,
+        allowed_suffixes,
+        duplicate_label="source files",
     )
 
     for source in selected_sources:

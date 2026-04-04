@@ -94,16 +94,14 @@ def preprocess_quarto(
             return {str(qmd_file): result}
         return {}
 
-    from .build import (
-        iter_content_source_candidates,
-        make_duplicate_warning_callback,
-        select_preferred_sources,
-    )
+    from .build import select_content_sources
 
     results: dict[str, str] = {}
-    selected_sources = select_preferred_sources(
-        iter_content_source_candidates(pages_path, config, {".qmd"}),
-        on_duplicate=make_duplicate_warning_callback(pages_path, "Quarto sources"),
+    selected_sources = select_content_sources(
+        pages_path,
+        config,
+        {".qmd"},
+        duplicate_label="Quarto sources",
     )
     for source in selected_sources:
         result = _render_source(source.source_file)

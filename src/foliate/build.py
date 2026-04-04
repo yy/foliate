@@ -255,6 +255,23 @@ def select_preferred_sources(
     return list(selected.values())
 
 
+def select_content_sources(
+    vault_path: Path,
+    config: Config,
+    suffixes: set[str],
+    duplicate_label: str | None = None,
+) -> list[SourceCandidate]:
+    """Return the preferred content source for each logical page path."""
+    on_duplicate = None
+    if duplicate_label is not None:
+        on_duplicate = make_duplicate_warning_callback(vault_path, duplicate_label)
+
+    return select_preferred_sources(
+        iter_content_source_candidates(vault_path, config, suffixes),
+        on_duplicate=on_duplicate,
+    )
+
+
 def _resolve_redirect_target(
     target_path: str,
     public_pages: list[Page],
@@ -352,9 +369,11 @@ def iter_public_md_files(
     """
     from .logging import debug
 
-    selected_sources = select_preferred_sources(
-        iter_content_source_candidates(vault_path, config, {".md"}),
-        on_duplicate=make_duplicate_warning_callback(vault_path, "markdown sources"),
+    selected_sources = select_content_sources(
+        vault_path,
+        config,
+        {".md"},
+        duplicate_label="markdown sources",
     )
 
     for source in selected_sources:
