@@ -1,5 +1,6 @@
 """Tests for the typed page model."""
 
+import os
 from datetime import date, datetime, timezone
 
 from foliate.page import Page, parse_frontmatter_date
@@ -32,6 +33,21 @@ class TestParseFrontmatterDate:
         result = parse_frontmatter_date("2024-03-15T10:30:00+09:00")
 
         assert result == datetime(2024, 3, 15, 1, 30, tzinfo=timezone.utc)
+
+    def test_parses_naive_datetime_string(self):
+        result = parse_frontmatter_date("2024-03-15T10:30:00")
+
+        assert result == datetime(2024, 3, 15, 10, 30, tzinfo=timezone.utc)
+
+    def test_normalizes_negative_offset_datetime(self):
+        result = parse_frontmatter_date("2024-03-15T10:30:00-05:00")
+
+        assert result == datetime(2024, 3, 15, 15, 30, tzinfo=timezone.utc)
+
+    def test_parses_z_suffix_datetime(self):
+        result = parse_frontmatter_date("2024-03-15T10:30:00Z")
+
+        assert result == datetime(2024, 3, 15, 10, 30, tzinfo=timezone.utc)
 
 
 class TestPageFromMarkdown:
@@ -121,6 +137,52 @@ class TestPageFromMarkdown:
         assert page.published_at == datetime(2024, 3, 15, tzinfo=timezone.utc)
         assert page.modified_at == datetime(2024, 3, 20, tzinfo=timezone.utc)
 
+    def test_published_date_falls_back_to_date_field(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {"published": True, "date": "2024-03-10"},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.published_at == datetime(2024, 3, 10, tzinfo=timezone.utc)
+
+    def test_published_date_falls_back_to_file_mtime(self, tmp_path):
+        file_mtime = 1710460800.0
+        md_file = tmp_path / "page.md"
+        md_file.write_text("Body")
+        os.utime(md_file, (file_mtime, file_mtime))
+
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+            file_path=md_file,
+        )
+
+        assert page.published_at == datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+
+    def test_published_date_is_none_without_any_available_date(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.published_at is None
+
+    def test_published_true_without_date_does_not_infer_published_at(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {"published": True},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.published_at is None
+
     def test_updated_frontmatter_sets_modified_at_and_display(self):
         page = Page.from_markdown(
             "notes/test",
@@ -142,6 +204,71 @@ class TestPageFromMarkdown:
 
         assert page.modified_at == datetime(2024, 4, 1, tzinfo=timezone.utc)
         assert page.updated == "2024-04-01"
+
+    def test_modified_falls_back_to_file_mtime(self, tmp_path):
+        file_mtime = 1710460800.0
+        md_file = tmp_path / "page.md"
+        md_file.write_text("Body")
+        os.utime(md_file, (file_mtime, file_mtime))
+
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+            file_path=md_file,
+        )
+
+        assert page.modified_at == datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+
+    def test_modified_falls_back_to_published_date(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {"published": "2024-03-15"},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.modified_at == datetime(2024, 3, 15, tzinfo=timezone.utc)
+
+    def test_modified_display_from_explicit_updated(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {"updated": "2024-03-20"},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.modified_display == "2024-03-20"
+
+    def test_modified_display_from_file_mtime(self, tmp_path):
+        file_mtime = 1710460800.0
+        md_file = tmp_path / "page.md"
+        md_file.write_text("Body")
+        os.utime(md_file, (file_mtime, file_mtime))
+
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+            file_path=md_file,
+        )
+
+        expected = datetime.fromtimestamp(file_mtime, tz=timezone.utc).strftime(
+            "%Y-%m-%d"
+        )
+        assert page.modified_display == expected
+
+    def test_modified_display_is_none_without_any_date(self):
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+        )
+
+        assert page.modified_display is None
 
     def test_updated_display_is_none_without_explicit_frontmatter(self, tmp_path):
         md_file = tmp_path / "page.md"

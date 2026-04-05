@@ -237,6 +237,7 @@ class BuildConfig:
     nl2br: bool = False  # Convert single newlines to <br> (Obsidian-style)
     slugify_urls: bool = False  # Replace spaces with hyphens in URLs
     recent_pages: int = 20  # Number of recent pages shown on the home page
+    new_page_window: int = 30  # Days within which a page is considered "new"
 
 
 @dataclass

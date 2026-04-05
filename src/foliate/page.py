@@ -48,6 +48,44 @@ def parse_frontmatter_date(value: object) -> datetime | None:
         return None
 
 
+def _first_parsed_date(*values: object) -> datetime | None:
+    """Return the first value that parses as a supported frontmatter date."""
+    for value in values:
+        parsed = parse_frontmatter_date(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _file_mtime_to_utc(file_mtime: float | None) -> datetime | None:
+    """Convert a filesystem mtime into a UTC datetime."""
+    if file_mtime is None:
+        return None
+    try:
+        return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _resolve_explicit_published_at(
+    published: object | None, date_value: object | None
+) -> datetime | None:
+    """Resolve the first explicit publish date from frontmatter."""
+    published_value = (
+        published
+        if published is not None and published is not True and published is not False
+        else None
+    )
+    return _first_parsed_date(published_value, date_value)
+
+
+def _resolve_explicit_modified_at(
+    updated: object | None, modified: object | None
+) -> datetime | None:
+    """Resolve the first explicit modified date from frontmatter."""
+    return _first_parsed_date(updated, modified)
+
+
 def _coerce_tags(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(tag) for tag in value]
@@ -83,6 +121,7 @@ class Page:
     is_published: bool = False
     published_at: datetime | None = None
     modified_at: datetime | None = None
+    modified_display: str | None = None
     updated: str | None = None
 
     @classmethod
@@ -123,15 +162,20 @@ class Page:
         date_value = meta.get("date")
         updated_value = meta.get("updated")
         modified_value = meta.get("modified")
-        published_at = cls._resolve_published_at(published, date_value, file_mtime)
-        modified_at = cls._resolve_modified_at(
-            updated_value, modified_value, file_mtime, published_at
+        explicit_modified_at = _resolve_explicit_modified_at(
+            updated_value, modified_value
+        )
+        published_at = _resolve_explicit_published_at(
+            published, date_value
+        ) or _file_mtime_to_utc(file_mtime)
+        modified_at = (
+            explicit_modified_at or _file_mtime_to_utc(file_mtime) or published_at
         )
 
-        explicit = parse_frontmatter_date(updated_value) or parse_frontmatter_date(
-            modified_value
+        updated_display = (
+            explicit_modified_at.strftime("%Y-%m-%d") if explicit_modified_at else None
         )
-        updated_display = explicit.strftime("%Y-%m-%d") if explicit else None
+        modified_display = modified_at.strftime("%Y-%m-%d") if modified_at else None
 
         return cls(
             path=page_path,
@@ -151,50 +195,6 @@ class Page:
             is_published=bool(published),
             published_at=published_at,
             modified_at=modified_at,
+            modified_display=modified_display,
             updated=updated_display,
         )
-
-    @staticmethod
-    def _resolve_published_at(
-        published: object | None,
-        date_value: object | None,
-        file_mtime: float | None,
-    ) -> datetime | None:
-        if published is not None and published is not True and published is not False:
-            parsed = parse_frontmatter_date(published)
-            if parsed is not None:
-                return parsed
-
-        parsed = parse_frontmatter_date(date_value)
-        if parsed is not None:
-            return parsed
-
-        if file_mtime is not None:
-            try:
-                return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
-            except (OSError, OverflowError, ValueError):
-                return None
-        return None
-
-    @staticmethod
-    def _resolve_modified_at(
-        updated: object | None,
-        modified: object | None,
-        file_mtime: float | None,
-        published_at: datetime | None,
-    ) -> datetime | None:
-        parsed = parse_frontmatter_date(updated)
-        if parsed is not None:
-            return parsed
-
-        parsed = parse_frontmatter_date(modified)
-        if parsed is not None:
-            return parsed
-
-        if file_mtime is not None:
-            try:
-                return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
-            except (OSError, OverflowError, ValueError):
-                return published_at
-
-        return published_at

@@ -174,13 +174,36 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     info("Watching for changes... (Press Ctrl+C to stop)")
     info("=" * 60)
 
+    rebuild_lock = threading.Lock()
+    _pending = False
+    _pending_force = False
+
     def rebuild_callback(force: bool = False):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        info(f"\n[{timestamp}] Rebuilding...")
-        start_time = time.time()
-        do_build(config=config, force_rebuild=force)
-        elapsed = time.time() - start_time
-        info(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
+        nonlocal _pending, _pending_force
+        if not rebuild_lock.acquire(blocking=False):
+            _pending = True
+            if force:
+                _pending_force = True
+            return
+        try:
+            while True:
+                if _pending_force:
+                    force = True
+                _pending = False
+                _pending_force = False
+
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                info(f"\n[{timestamp}] Rebuilding...")
+                start_time = time.time()
+                do_build(config=config, force_rebuild=force)
+                elapsed = time.time() - start_time
+                info(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
+
+                if not _pending:
+                    break
+                force = False
+        finally:
+            rebuild_lock.release()
 
     # Setup watchdog
     handler = FoliateEventHandler(config, rebuild_callback)

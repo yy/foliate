@@ -32,7 +32,7 @@
     <ul class="page-list">
         {% for recent_page in recent_pages %}
         <li>
-            <span class="page-date">{{ recent_page.updated or recent_page.date or '' }}</span>
+            <span class="page-date{% if recent_page.path in new_page_paths %} page-date--new{% endif %}">{{ recent_page.modified_display or '' }}</span>
             <a href="{{ recent_page.url }}">{{ recent_page.title or recent_page.path }}</a>
         </li>
         {% endfor %}
