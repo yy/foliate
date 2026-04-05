@@ -154,18 +154,28 @@ def _collect_public_source_paths(config: Config) -> set[str]:
     """Return the current set of public markdown source files in the vault."""
     from .build import select_content_sources
     from .markdown_utils import parse_markdown_file
+    from .quarto import is_quarto_preprocessing_available
 
     vault_path = config.vault_path
     if not vault_path:
         return set()
 
+    allowed_suffixes = {".md"}
+    if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
+        allowed_suffixes.add(".qmd")
+
     public_sources: set[str] = set()
-    selected_sources = select_content_sources(vault_path, config, {".md"})
+    selected_sources = select_content_sources(vault_path, config, allowed_suffixes)
 
     for source in selected_sources:
         meta, _ = parse_markdown_file(source.source_file)
         if bool(meta.get("public", False)):
-            public_sources.add(str(source.source_file))
+            cache_source = source.source_file
+            # Quarto sources are cached under their rendered .md path after
+            # preprocessing, so compare using the same normalized key format.
+            if cache_source.suffix.lower() == ".qmd":
+                cache_source = cache_source.with_suffix(".md")
+            public_sources.add(str(cache_source))
 
     return public_sources
 
