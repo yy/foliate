@@ -100,6 +100,70 @@ def _coerce_str(value: object, fallback: str = "") -> str:
     return fallback
 
 
+def _build_page_url(page_path: str, base_url: str, slugify_urls: bool) -> str:
+    """Build the public URL for a page path."""
+    url_path = slugify_path(page_path) if slugify_urls else page_path
+    return f"{base_url}{url_path}/"
+
+
+def _resolve_description(meta: Frontmatter, markdown_content: str) -> str:
+    """Resolve description from frontmatter or content."""
+    return _coerce_str(meta.get("description")) or extract_description(markdown_content)
+
+
+def _normalize_image_path(image: str | None) -> str | None:
+    """Normalize image references to public asset paths."""
+    if not image:
+        return None
+
+    normalized = image.strip()
+    if normalized.startswith("assets/"):
+        return f"/{normalized}"
+    if normalized.startswith(("/", "http://", "https://")):
+        return normalized
+    return f"/assets/{normalized}"
+
+
+def _resolve_image(meta: Frontmatter, markdown_content: str) -> str | None:
+    """Resolve image from frontmatter or first markdown image."""
+    image_value = _coerce_str(meta.get("image"))
+    return _normalize_image_path(image_value or extract_first_image(markdown_content))
+
+
+def _resolve_file_metadata(
+    file_path: Path | None,
+) -> tuple[str | None, float | None]:
+    """Read derived file metadata for a source path."""
+    if file_path is None:
+        return None, None
+
+    file_mtime = file_path.stat().st_mtime
+    file_modified = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d")
+    return file_modified, file_mtime
+
+
+def _resolve_page_dates(
+    meta: Frontmatter, file_mtime: float | None
+) -> tuple[datetime | None, datetime | None, str | None, str | None]:
+    """Resolve published/modified timestamps and display values."""
+    published = meta.get("published")
+    date_value = meta.get("date")
+    explicit_modified_at = _resolve_explicit_modified_at(
+        meta.get("updated"), meta.get("modified")
+    )
+    published_at = _resolve_explicit_published_at(
+        published, date_value
+    ) or _file_mtime_to_utc(file_mtime)
+    modified_at = (
+        explicit_modified_at or _file_mtime_to_utc(file_mtime) or published_at
+    )
+    updated_display = (
+        explicit_modified_at.strftime("%Y-%m-%d") if explicit_modified_at else None
+    )
+    modified_display = modified_at.strftime("%Y-%m-%d") if modified_at else None
+    return published_at, modified_at, modified_display, updated_display
+
+
 @dataclass
 class Page:
     """Normalized build-time page object."""
@@ -136,46 +200,14 @@ class Page:
         slugify_urls: bool = False,
     ) -> "Page":
         """Create a normalized page object from source markdown."""
-        url_path = slugify_path(page_path) if slugify_urls else page_path
-        page_url = f"{base_url}{url_path}/"
-
-        description = _coerce_str(meta.get("description")) or extract_description(
-            markdown_content
-        )
-
-        image_value = _coerce_str(meta.get("image"))
-        image = image_value or extract_first_image(markdown_content)
-        if image:
-            image = image.strip()
-            if image.startswith("assets/"):
-                image = f"/{image}"
-            elif not image.startswith(("/", "http://", "https://")):
-                image = f"/assets/{image}"
-
-        file_modified: str | None = None
-        file_mtime: float | None = None
-        if file_path:
-            file_mtime = file_path.stat().st_mtime
-            file_modified = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d")
-
         published = meta.get("published")
-        date_value = meta.get("date")
-        updated_value = meta.get("updated")
-        modified_value = meta.get("modified")
-        explicit_modified_at = _resolve_explicit_modified_at(
-            updated_value, modified_value
+        page_url = _build_page_url(page_path, base_url, slugify_urls)
+        description = _resolve_description(meta, markdown_content)
+        image = _resolve_image(meta, markdown_content)
+        file_modified, file_mtime = _resolve_file_metadata(file_path)
+        published_at, modified_at, modified_display, updated_display = (
+            _resolve_page_dates(meta, file_mtime)
         )
-        published_at = _resolve_explicit_published_at(
-            published, date_value
-        ) or _file_mtime_to_utc(file_mtime)
-        modified_at = (
-            explicit_modified_at or _file_mtime_to_utc(file_mtime) or published_at
-        )
-
-        updated_display = (
-            explicit_modified_at.strftime("%Y-%m-%d") if explicit_modified_at else None
-        )
-        modified_display = modified_at.strftime("%Y-%m-%d") if modified_at else None
 
         return cls(
             path=page_path,
@@ -184,7 +216,7 @@ class Page:
             body=markdown_content,
             html=render_markdown(markdown_content, base_url) if render_html else "",
             published=published,
-            date=date_value,
+            date=meta.get("date"),
             url=page_url,
             base_url=base_url,
             description=description,
