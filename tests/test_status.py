@@ -97,7 +97,8 @@ def _make_vault(tmp_path, pages: dict[str, dict]) -> Config:
     Args:
         tmp_path: pytest tmp_path fixture
         pages: dict mapping relative file paths (e.g. "test.md") to dicts
-               with keys: content (str), and optionally a subdir like "_homepage/about.md"
+               with keys: content (str), and optionally a subdir like
+               "_homepage/about.md"
     """
     vault_path = tmp_path / "vault"
     vault_path.mkdir()
@@ -205,7 +206,9 @@ class TestScanStatus:
             tmp_path,
             {
                 "blog.md": {
-                    "content": "---\ntitle: Blog\npublic: true\npublished: true\n---\nPost.\n",
+                    "content": (
+                        "---\ntitle: Blog\npublic: true\npublished: true\n---\nPost.\n"
+                    ),
                 },
             },
         )
@@ -229,6 +232,33 @@ class TestScanStatus:
         assert p.is_homepage_content is True
         assert p.base_url == "/"
         assert p.page_path == "about"
+
+    def test_homepage_and_wiki_pages_with_same_path_are_reported_separately(
+        self, tmp_path
+    ):
+        """Status should keep homepage and wiki namespaces distinct."""
+        config = _make_vault(
+            tmp_path,
+            {
+                "_homepage/about.md": {
+                    "content": "---\ntitle: About\npublic: true\n---\nHomepage.\n",
+                },
+                "about.md": {
+                    "content": "---\ntitle: About Wiki\npublic: true\n---\nWiki.\n",
+                },
+            },
+        )
+
+        report = scan_status(config)
+
+        assert len(report.public_pages) == 2
+        assert {
+            (page.page_path, page.base_url, page.is_homepage_content)
+            for page in report.public_pages
+        } == {
+            ("about", "/", True),
+            ("about", "/wiki/", False),
+        }
 
     def test_unchanged_after_build(self, tmp_path):
         """Page shows as 'unchanged' after a successful build."""
@@ -312,7 +342,10 @@ home_redirect = "about"
                     "content": "---\ntitle: Public\npublic: true\n---\nPublic.\n",
                 },
                 "published.md": {
-                    "content": "---\ntitle: Published\npublic: true\npublished: true\n---\nPublished.\n",
+                    "content": (
+                        "---\ntitle: Published\npublic: true\npublished: true\n"
+                        "---\nPublished.\n"
+                    ),
                 },
                 "private.md": {
                     "content": "---\ntitle: Private\n---\nPrivate.\n",
@@ -388,7 +421,10 @@ incremental = false
             tmp_path,
             {
                 "public.md": {
-                    "content": "---\ntitle: Public\npublic: true\npublished: true\n---\nPublic.\n",
+                    "content": (
+                        "---\ntitle: Public\npublic: true\npublished: true\n"
+                        "---\nPublic.\n"
+                    ),
                 },
                 "private.md": {
                     "content": "---\ntitle: Private\npublished: true\n---\nPrivate.\n",

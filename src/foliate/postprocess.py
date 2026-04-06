@@ -207,8 +207,12 @@ def postprocess_links(
         error(f"Build directory '{build_dir}' does not exist")
         return False
 
-    # Extract public page paths into a set for fast lookup
-    public_paths = {page.path for page in public_pages}
+    # Wikilinks target the wiki namespace. Keep homepage-only pages out of the
+    # public target set unless the wiki itself is configured at the site root.
+    wiki_base_url = config.base_urls["wiki"]
+    public_paths = {
+        page.path for page in public_pages if page.base_url == wiki_base_url
+    }
 
     # Build slug-to-original mapping when slugify is enabled
     slugify = config.build.slugify_urls

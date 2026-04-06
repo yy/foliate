@@ -218,30 +218,36 @@ def _has_ambiguous_duplicate_candidates(candidates: list[SourceCandidate]) -> bo
     return False
 
 
+def _source_output_key(candidate: SourceCandidate) -> tuple[str, str]:
+    """Return the logical output namespace for a content source."""
+    return candidate.page_path, candidate.base_url
+
+
 def select_preferred_sources(
     candidates: Iterable[SourceCandidate],
     on_duplicate: Callable[[str, SourceCandidate, list[SourceCandidate]], None]
     | None = None,
 ) -> list[SourceCandidate]:
-    """Select one preferred source for each page path."""
-    grouped_candidates: dict[str, list[SourceCandidate]] = {}
-    selected: dict[str, SourceCandidate] = {}
+    """Select one preferred source for each logical output path."""
+    grouped_candidates: dict[tuple[str, str], list[SourceCandidate]] = {}
+    selected: dict[tuple[str, str], SourceCandidate] = {}
 
     for candidate in candidates:
-        grouped_candidates.setdefault(candidate.page_path, []).append(candidate)
+        output_key = _source_output_key(candidate)
+        grouped_candidates.setdefault(output_key, []).append(candidate)
 
-        existing = selected.get(candidate.page_path)
+        existing = selected.get(output_key)
         if existing is None or _source_priority(candidate) < _source_priority(existing):
-            selected[candidate.page_path] = candidate
+            selected[output_key] = candidate
 
     if on_duplicate is not None:
-        for page_path, page_candidates in grouped_candidates.items():
+        for (page_path, _base_url), page_candidates in grouped_candidates.items():
             if len(page_candidates) < 2 or not _has_ambiguous_duplicate_candidates(
                 page_candidates
             ):
                 continue
 
-            chosen = selected[page_path]
+            chosen = selected[(page_path, _base_url)]
             ignored = sorted(
                 (
                     candidate
@@ -279,15 +285,37 @@ def _resolve_redirect_target(
     slugify: bool,
 ) -> tuple[str, str]:
     """Resolve a configured redirect target to a built page URL when possible."""
-    target_page = next(
-        (page for page in public_pages if page.path == target_path),
-        None,
+    target_page = _find_page_by_path(
+        public_pages,
+        target_path,
+        preferred_base_url=fallback_base_url,
     )
     if target_page is not None:
         return target_page.url, target_page.title
 
     url_path = slugify_path(target_path) if slugify else target_path
     return f"{fallback_base_url}{url_path}/", target_path
+
+
+def _find_page_by_path(
+    pages: list[Page],
+    target_path: str,
+    preferred_base_url: str | None = None,
+) -> Page | None:
+    """Return the page for a logical path, preferring the given base URL."""
+    if preferred_base_url is not None:
+        preferred_page = next(
+            (
+                page
+                for page in pages
+                if page.path == target_path and page.base_url == preferred_base_url
+            ),
+            None,
+        )
+        if preferred_page is not None:
+            return preferred_page
+
+    return next((page for page in pages if page.path == target_path), None)
 
 
 def render_page_to_file(
@@ -530,16 +558,17 @@ def process_markdown_files(
 
     # Check for slug collisions
     if config.build.slugify_urls:
-        slug_to_original: dict[str, str] = {}
-        for _, page_path, _, _, _ in all_entries:
+        slug_to_original: dict[tuple[str, str], str] = {}
+        for _, page_path, base_url, _, _ in all_entries:
             slug = slugify_path(page_path)
-            if slug in slug_to_original and slug_to_original[slug] != page_path:
+            slug_key = (base_url, slug)
+            if slug_key in slug_to_original and slug_to_original[slug_key] != page_path:
                 log_error(
-                    f"URL collision: '{slug_to_original[slug]}' and '{page_path}' "
-                    f"both resolve to /{slug}/"
+                    f"URL collision: '{slug_to_original[slug_key]}' and "
+                    f"'{page_path}' both resolve to {base_url}{slug}/"
                 )
                 return [], [], {}, stats
-            slug_to_original[slug] = page_path
+            slug_to_original[slug_key] = page_path
 
     for md_file, page_path, base_url, meta, content in all_entries:
         page, was_rebuilt = process_single_md_file(
@@ -633,7 +662,11 @@ def render_home_page(
     from .logging import debug
 
     home_page_name = config.build.home_page
-    home_page = next((p for p in public_pages if p.path == home_page_name), None)
+    home_page = _find_page_by_path(
+        public_pages,
+        home_page_name,
+        preferred_base_url=config.base_urls["wiki"],
+    )
     if not home_page:
         return
 

@@ -246,6 +246,39 @@ class TestPostprocessLinks:
             assert "<a" not in content
             assert 'class="wikilink-private"' in content
 
+    def test_treats_homepage_only_page_as_private_wiki_target(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from foliate.config import Config
+
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            wiki_dir = build_dir / "wiki" / "Home"
+            wiki_dir.mkdir(parents=True)
+            (wiki_dir / "index.html").write_text(
+                '<a href="/wiki/about/" class="wikilink">About</a>'
+            )
+
+            public_pages = [
+                Page.from_markdown("Home", {"public": True}, "", render_html=False),
+                Page.from_markdown(
+                    "about",
+                    {"public": True},
+                    "",
+                    render_html=False,
+                    base_url="/",
+                ),
+            ]
+
+            result = postprocess_links(config, public_pages)
+
+            assert result is True
+            content = (wiki_dir / "index.html").read_text()
+            assert "<a" not in content
+            assert 'class="wikilink-private"' in content
+            assert 'data-wiki-path="about"' in content
+
     def test_returns_false_for_missing_build_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             from foliate.config import Config
