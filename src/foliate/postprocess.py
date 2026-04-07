@@ -236,10 +236,11 @@ def postprocess_links(
             build_dir / sp / "index.html",  # Homepage page
         ]
 
+        seen_paths: set[Path] = set()
         for path in possible_paths:
-            if path.exists():
+            if path.exists() and path not in seen_paths:
                 html_files.append(path)
-                break
+                seen_paths.add(path)
 
         if not html_files:
             warning(f"Could not find HTML file for page '{single_page}'")

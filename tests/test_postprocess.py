@@ -289,3 +289,45 @@ class TestPostprocessLinks:
             result = postprocess_links(config, [])
 
             assert result is False
+
+    def test_single_page_processes_both_homepage_and_wiki_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from foliate.config import Config
+
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            wiki_dir = build_dir / "wiki" / "About"
+            home_dir = build_dir / "About"
+            wiki_dir.mkdir(parents=True)
+            home_dir.mkdir(parents=True)
+
+            private_link = '<a href="/wiki/Private/" class="wikilink">Private</a>'
+            (wiki_dir / "index.html").write_text(private_link)
+            (home_dir / "index.html").write_text(private_link)
+
+            public_pages = [
+                Page.from_markdown(
+                    "About",
+                    {"public": True},
+                    "",
+                    render_html=False,
+                    base_url="/wiki/",
+                ),
+                Page.from_markdown(
+                    "About",
+                    {"public": True},
+                    "",
+                    render_html=False,
+                    base_url="/",
+                ),
+            ]
+
+            result = postprocess_links(config, public_pages, single_page="About")
+
+            assert result is True
+            assert "<a" not in (wiki_dir / "index.html").read_text()
+            assert "<a" not in (home_dir / "index.html").read_text()
+            assert 'class="wikilink-private"' in (wiki_dir / "index.html").read_text()
+            assert 'class="wikilink-private"' in (home_dir / "index.html").read_text()
