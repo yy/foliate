@@ -122,6 +122,26 @@ class TestIsBuildStale:
 
             assert result is True
 
+    def test_returns_true_when_user_static_modified_after_build(self):
+        """Should return True when user static files are newer than build."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            build_dir = vault / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            (build_dir / "test.html").write_text("<html>Test</html>")
+
+            time.sleep(0.05)
+            static_dir = vault / ".foliate" / "static"
+            static_dir.mkdir(parents=True)
+            (static_dir / "main.css").write_text("body { color: black; }")
+
+            result = is_build_stale(config)
+
+            assert result is True
+
     def test_ignores_private_folders(self):
         """Should not consider files in ignored folders as sources."""
         with tempfile.TemporaryDirectory() as tmpdir:

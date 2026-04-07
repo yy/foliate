@@ -1,6 +1,7 @@
 """Deployment functionality for foliate."""
 
 import subprocess
+from collections.abc import Iterable, Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -107,7 +108,9 @@ def _dry_run_trees_match(
         if entry_type != "file":
             continue
         try:
-            if not _files_have_same_contents(build_dir / rel_path, target_dir / rel_path):
+            if not _files_have_same_contents(
+                build_dir / rel_path, target_dir / rel_path
+            ):
                 return False
         except OSError:
             return None
@@ -220,14 +223,59 @@ def _get_newest_mtime_in_dir(directory: Path) -> float:
     Returns:
         Most recent mtime, or 0 if no files found
     """
+    return _get_newest_mtime(_iter_files(directory))
+
+
+def _iter_existing_file(path: Path) -> Iterator[Path]:
+    """Yield a path when it exists and is a regular file."""
+    if path.is_file():
+        yield path
+
+
+def _iter_files(directory: Path, suffixes: set[str] | None = None) -> Iterator[Path]:
+    """Yield regular files below a directory, optionally filtered by suffix."""
+    if not directory.exists():
+        return
+
+    for path in directory.rglob("*"):
+        if not path.is_file():
+            continue
+        if suffixes is not None and path.suffix.lower() not in suffixes:
+            continue
+        yield path
+
+
+def _get_newest_mtime(paths: Iterable[Path]) -> float:
+    """Return the newest mtime from a sequence of paths."""
     max_mtime = 0.0
-    for file in directory.rglob("*"):
-        if file.is_file():
-            try:
-                max_mtime = max(max_mtime, file.stat().st_mtime)
-            except OSError:
-                pass
+    for path in paths:
+        try:
+            max_mtime = max(max_mtime, path.stat().st_mtime)
+        except OSError:
+            continue
     return max_mtime
+
+
+def _iter_content_source_files(config: Config) -> Iterator[Path]:
+    """Yield content source files that participate in build staleness checks."""
+    from .build import is_path_ignored, iter_source_files
+
+    vault_path = config.vault_path
+    if not vault_path:
+        return
+
+    for source_file in iter_source_files(vault_path, {".md", ".qmd"}):
+        try:
+            rel_path = source_file.relative_to(vault_path)
+        except ValueError:
+            continue
+
+        if rel_path.parts and rel_path.parts[0] == ".foliate":
+            continue
+        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
+            continue
+
+        yield source_file
 
 
 def _get_newest_source_mtime(config: Config) -> float:
@@ -247,75 +295,25 @@ def _get_newest_source_mtime(config: Config) -> float:
         Most recent mtime, or 0 if no files found
     """
     from .assets import SUPPORTED_ASSET_EXTENSIONS
-    from .build import is_path_ignored, iter_source_files
 
-    max_mtime = 0.0
     vault_path = config.vault_path
 
     if not vault_path:
-        return max_mtime
+        return 0.0
 
-    # Check markdown and quarto files (excluding ignored folders and .foliate directory)
-    for source_file in iter_source_files(vault_path, {".md", ".qmd"}):
-        # Skip .foliate directory
-        try:
-            rel_path = source_file.relative_to(vault_path)
-            if rel_path.parts and rel_path.parts[0] == ".foliate":
-                continue
-        except ValueError:
-            continue
-
-        # Skip ignored folders
-        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
-            continue
-
-        try:
-            max_mtime = max(max_mtime, source_file.stat().st_mtime)
-        except OSError:
-            pass
-
-    # Check user assets
-    assets_dir = vault_path / "assets"
-    if assets_dir.exists():
-        for asset_file in assets_dir.rglob("*"):
-            if not asset_file.is_file():
-                continue
-            if asset_file.suffix.lower() not in SUPPORTED_ASSET_EXTENSIONS:
-                continue
-            try:
-                max_mtime = max(max_mtime, asset_file.stat().st_mtime)
-            except OSError:
-                pass
-
-    # Check config.toml
-    config_file = vault_path / ".foliate" / "config.toml"
-    if config_file.exists():
-        try:
-            max_mtime = max(max_mtime, config_file.stat().st_mtime)
-        except OSError:
-            pass
-
-    # Check user templates
-    templates_dir = vault_path / ".foliate" / "templates"
-    if templates_dir.exists():
-        for template_file in templates_dir.rglob("*"):
-            if template_file.is_file():
-                try:
-                    max_mtime = max(max_mtime, template_file.stat().st_mtime)
-                except OSError:
-                    pass
-
-    # Check user static files
-    static_dir = vault_path / ".foliate" / "static"
-    if static_dir.exists():
-        for static_file in static_dir.rglob("*"):
-            if static_file.is_file():
-                try:
-                    max_mtime = max(max_mtime, static_file.stat().st_mtime)
-                except OSError:
-                    pass
-
-    return max_mtime
+    return _get_newest_mtime(
+        (
+            path
+            for paths in (
+                _iter_content_source_files(config),
+                _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
+                _iter_existing_file(vault_path / ".foliate" / "config.toml"),
+                _iter_files(vault_path / ".foliate" / "templates"),
+                _iter_files(vault_path / ".foliate" / "static"),
+            )
+            for path in paths
+        )
+    )
 
 
 def _run_command(args: list[str], error_label: str, **kwargs):
