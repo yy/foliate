@@ -157,18 +157,18 @@ def _collect_public_source_paths(config: Config) -> set[str]:
     """Return the current set of public markdown source files in the vault."""
     from .build import select_content_sources
     from .markdown_utils import parse_markdown_file
-    from .quarto import is_quarto_preprocessing_available
+    from .quarto import get_buildable_content_suffixes
 
     vault_path = config.vault_path
     if not vault_path:
         return set()
 
-    allowed_suffixes = {".md"}
-    if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
-        allowed_suffixes.add(".qmd")
-
     public_sources: set[str] = set()
-    selected_sources = select_content_sources(vault_path, config, allowed_suffixes)
+    selected_sources = select_content_sources(
+        vault_path,
+        config,
+        get_buildable_content_suffixes(config),
+    )
 
     for source in selected_sources:
         meta, _ = parse_markdown_file(source.source_file)

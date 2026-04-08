@@ -197,7 +197,7 @@ class TestBuildCommand:
             assert "Would build (1):" in result.output
             assert "+ test (forced)" in result.output
 
-    @patch("foliate.status.is_quarto_preprocessing_available", return_value=False)
+    @patch("foliate.quarto.is_quarto_preprocessing_available", return_value=False)
     def test_dry_run_skips_qmd_only_pages_when_preprocessing_unavailable(
         self, _mock_quarto_available
     ):

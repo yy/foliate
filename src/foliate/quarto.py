@@ -19,6 +19,14 @@ def is_quarto_preprocessing_available() -> bool:
     return bool(is_quarto_available())
 
 
+def get_buildable_content_suffixes(config: Config) -> set[str]:
+    """Return the content suffixes buildable in the current environment."""
+    suffixes = {".md"}
+    if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
+        suffixes.add(".qmd")
+    return suffixes
+
+
 def preprocess_quarto(
     config: Config,
     force: bool = False,

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from foliate.config import AdvancedConfig, Config
-from foliate.quarto import preprocess_quarto
+from foliate.quarto import get_buildable_content_suffixes, preprocess_quarto
 
 
 class TestPreprocessQuarto:
@@ -164,3 +164,34 @@ class TestPreprocessQuarto:
         assert result == {str(lower_qmd): str(generated_md)}
         render_qmd.assert_called_once()
         assert render_qmd.call_args.kwargs["qmd_file"] == lower_qmd
+
+
+class TestGetBuildableContentSuffixes:
+    """Tests for selecting buildable content suffixes."""
+
+    def test_returns_markdown_only_when_quarto_disabled(self):
+        """Disabled Quarto should never expose qmd sources to callers."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=False)
+
+        assert get_buildable_content_suffixes(config) == {".md"}
+
+    def test_returns_markdown_only_when_quarto_unavailable(self, monkeypatch):
+        """Unavailable preprocessing should exclude qmd-only sources."""
+        monkeypatch.setattr(
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: False
+        )
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+
+        assert get_buildable_content_suffixes(config) == {".md"}
+
+    def test_includes_qmd_when_quarto_available(self, monkeypatch):
+        """Available preprocessing should include qmd sources."""
+        monkeypatch.setattr(
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: True
+        )
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+
+        assert get_buildable_content_suffixes(config) == {".md", ".qmd"}

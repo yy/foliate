@@ -478,7 +478,7 @@ quarto_enabled = true
     ):
         """QMD-only pages should not appear when Quarto preprocessing cannot run."""
         monkeypatch.setattr(
-            "foliate.status.is_quarto_preprocessing_available", lambda: False
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: False
         )
         vault_path = tmp_path / "vault"
         vault_path.mkdir()
@@ -512,7 +512,7 @@ quarto_enabled = true
     ):
         """QMD-only pages should appear when Quarto preprocessing is available."""
         monkeypatch.setattr(
-            "foliate.status.is_quarto_preprocessing_available", lambda: True
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: True
         )
         vault_path = tmp_path / "vault"
         vault_path.mkdir()

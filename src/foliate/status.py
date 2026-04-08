@@ -14,7 +14,7 @@ from .build import (
 )
 from .config import Config
 from .markdown_utils import parse_markdown_file
-from .quarto import is_quarto_preprocessing_available
+from .quarto import get_buildable_content_suffixes
 
 
 @dataclass
@@ -161,16 +161,10 @@ def scan_status(config: Config) -> StatusReport:
     last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else None
 
     pages: list[PageStatus] = []
-    # Keep dry-run/status aligned with build(): qmd-only pages are buildable
-    # only when Quarto preprocessing can actually run in this environment.
-    allowed_suffixes = {".md"}
-    if config.advanced.quarto_enabled and is_quarto_preprocessing_available():
-        allowed_suffixes.add(".qmd")
-
     selected_sources = select_content_sources(
         vault_path,
         config,
-        allowed_suffixes,
+        get_buildable_content_suffixes(config),
         duplicate_label="source files",
     )
 
