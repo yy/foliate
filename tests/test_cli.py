@@ -33,6 +33,15 @@ class TestInitCommand:
             assert templates_dir.exists()
             assert "templates" in result.output
 
+    def test_creates_feed_template(self):
+        """Should scaffold the bundled feed.xml template during init."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init"])
+
+            assert result.exit_code == 0
+            assert Path(".foliate/templates/feed.xml").exists()
+
     def test_creates_static_directory(self):
         """Should create .foliate/static/ with CSS files."""
         runner = CliRunner()

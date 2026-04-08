@@ -35,9 +35,7 @@ def get_default_config_content() -> str:
 
 def copy_default_templates(target_dir: Path, force: bool = False) -> list[str]:
     """Copy default templates to target directory."""
-    return copy_package_files(
-        "foliate.defaults.templates", target_dir, suffix=".html", force=force
-    )
+    return copy_package_files("foliate.defaults.templates", target_dir, force=force)
 
 
 def copy_default_static(target_dir: Path, force: bool = False) -> list[str]:
