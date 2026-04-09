@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from watchdog.events import DirCreatedEvent, FileModifiedEvent
+from watchdog.events import DirCreatedEvent, FileModifiedEvent, FileMovedEvent
 
 from foliate.config import Config
 from foliate.watch import FoliateEventHandler, watch
@@ -169,6 +169,22 @@ class TestFoliateEventHandler:
             event = FileModifiedEvent(path)
             handler.on_any_event(event)
             assert path in handler.pending_changes, f"Should track {path}"
+
+    def test_tracks_markdown_file_moved_out_of_ignored_folder(self, handler):
+        """Moving a tracked file out of an ignored folder should rebuild."""
+        event = FileMovedEvent("/vault/_private/page.md", "/vault/notes/page.md")
+
+        handler.on_any_event(event)
+
+        assert "/vault/notes/page.md" in handler.pending_changes
+
+    def test_tracks_file_renamed_into_markdown_extension(self, handler):
+        """Renaming an untracked file into .md should rebuild."""
+        event = FileMovedEvent("/vault/notes/page.tmp", "/vault/notes/page.md")
+
+        handler.on_any_event(event)
+
+        assert "/vault/notes/page.md" in handler.pending_changes
 
     def test_does_not_duplicate_pending_changes(self, handler):
         """Should not add duplicate paths to pending_changes."""
