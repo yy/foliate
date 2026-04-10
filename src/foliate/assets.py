@@ -20,6 +20,7 @@ SUPPORTED_ASSET_EXTENSIONS = {
     ".doc",
     ".docx",
     ".txt",
+    ".bib",
     # Media
     ".mp4",
     ".mp3",
