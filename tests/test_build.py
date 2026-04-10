@@ -1,5 +1,7 @@
 """Tests for foliate build system."""
 
+from unittest.mock import patch
+
 from jinja2 import Environment
 
 from foliate import build
@@ -1160,3 +1162,47 @@ class TestBuildStats:
 
         assert stats["rebuilt_count"] == 1
         assert stats["skipped_count"] == 1
+
+    def test_process_markdown_files_aborts_on_slugified_url_collision(self, tmp_path):
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test"
+
+[build]
+slugify_urls = true
+"""
+        )
+
+        (vault_path / "My Page.md").write_text("---\npublic: true\n---\nOne")
+        (vault_path / "My-Page.md").write_text("---\npublic: true\n---\nTwo")
+
+        config = Config.load(config_path)
+        build_dir = config.get_build_dir()
+        build_dir.mkdir(parents=True, exist_ok=True)
+        env = Environment(loader=get_template_loader(vault_path))
+
+        with patch("foliate.logging.error") as mock_error:
+            public_pages, published_pages, new_build_cache, stats = (
+                build.process_markdown_files(
+                    vault_path=vault_path,
+                    build_dir=build_dir,
+                    env=env,
+                    config=config,
+                    build_cache={},
+                    force_rebuild=False,
+                    incremental=False,
+                )
+            )
+
+        assert public_pages == []
+        assert published_pages == []
+        assert new_build_cache == {}
+        assert stats == {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
+        mock_error.assert_called_once()

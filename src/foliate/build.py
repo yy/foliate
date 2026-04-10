@@ -530,6 +530,46 @@ def process_single_md_file(
     return page, True
 
 
+MarkdownBuildEntry = tuple[Path, str, str, Frontmatter, str]
+
+
+def _collect_public_markdown_entries(
+    vault_path: Path,
+    config: Config,
+    single_page: str | None = None,
+) -> tuple[list[MarkdownBuildEntry], dict[str, int]]:
+    """Collect buildable markdown entries and initialize build statistics."""
+    stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
+
+    def _track_skipped(_md_file: Path, _page_path: str) -> None:
+        stats["skipped_count"] += 1
+
+    entries = list(
+        iter_public_md_files(vault_path, config, single_page, on_skipped=_track_skipped)
+    )
+    return entries, stats
+
+
+def _validate_slugified_output_paths(entries: list[MarkdownBuildEntry]) -> bool:
+    """Return whether slugified outputs are unique within each URL namespace."""
+    from .logging import error as log_error
+
+    slug_to_original: dict[tuple[str, str], str] = {}
+    for _, page_path, base_url, _, _ in entries:
+        slug = slugify_path(page_path)
+        slug_key = (base_url, slug)
+        original_path = slug_to_original.get(slug_key)
+        if original_path is not None and original_path != page_path:
+            log_error(
+                f"URL collision: '{original_path}' and "
+                f"'{page_path}' both resolve to {base_url}{slug}/"
+            )
+            return False
+        slug_to_original[slug_key] = page_path
+
+    return True
+
+
 def process_markdown_files(
     vault_path: Path,
     build_dir: Path,
@@ -541,34 +581,16 @@ def process_markdown_files(
     single_page: str | None = None,
 ) -> tuple[list[Page], list[Page], dict[str, float], dict[str, int]]:
     """Process all markdown files and return page data and statistics."""
-    from .logging import error as log_error
+    all_entries, stats = _collect_public_markdown_entries(
+        vault_path, config, single_page
+    )
+
+    if config.build.slugify_urls and not _validate_slugified_output_paths(all_entries):
+        return [], [], {}, stats
 
     public_pages: list[Page] = []
     published_pages: list[Page] = []
     new_build_cache: dict[str, float] = {}
-    stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
-
-    def _track_skipped(_md_file: Path, _page_path: str) -> None:
-        stats["skipped_count"] += 1
-
-    # Collect all public pages first for collision detection when slugifying
-    all_entries = list(
-        iter_public_md_files(vault_path, config, single_page, on_skipped=_track_skipped)
-    )
-
-    # Check for slug collisions
-    if config.build.slugify_urls:
-        slug_to_original: dict[tuple[str, str], str] = {}
-        for _, page_path, base_url, _, _ in all_entries:
-            slug = slugify_path(page_path)
-            slug_key = (base_url, slug)
-            if slug_key in slug_to_original and slug_to_original[slug_key] != page_path:
-                log_error(
-                    f"URL collision: '{slug_to_original[slug_key]}' and "
-                    f"'{page_path}' both resolve to {base_url}{slug}/"
-                )
-                return [], [], {}, stats
-            slug_to_original[slug_key] = page_path
 
     for md_file, page_path, base_url, meta, content in all_entries:
         page, was_rebuilt = process_single_md_file(
@@ -584,17 +606,14 @@ def process_markdown_files(
             force_rebuild,
             incremental,
         )
-
         new_build_cache[str(md_file)] = page.file_mtime or md_file.stat().st_mtime
         public_pages.append(page)
-
+        if page.is_published:
+            published_pages.append(page)
         if was_rebuilt:
             stats["rebuilt_count"] += 1
         else:
             stats["cached_count"] += 1
-
-        if page.is_published:
-            published_pages.append(page)
 
     return public_pages, published_pages, new_build_cache, stats
 
