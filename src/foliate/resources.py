@@ -6,7 +6,7 @@ with proper error handling for missing resources.
 
 import importlib.resources
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 _PACKAGE_RESOURCE_ERRORS = (
@@ -17,14 +17,22 @@ _PACKAGE_RESOURCE_ERRORS = (
 )
 
 
+def _get_package_root(package: str):
+    """Resolve a package root for resource access."""
+    try:
+        return importlib.resources.files(package)
+    except _PACKAGE_RESOURCE_ERRORS:
+        return None
+
+
 def _get_package_file(package: str, filename: str):
     """Resolve a single file resource from a package."""
-    try:
-        resource = importlib.resources.files(package).joinpath(filename)
-        if resource.is_file():
-            return resource
-    except _PACKAGE_RESOURCE_ERRORS:
-        pass
+    package_root = _get_package_root(package)
+    if package_root is None:
+        return None
+    resource = package_root.joinpath(filename)
+    if resource.is_file():
+        return resource
     return None
 
 
@@ -34,17 +42,32 @@ def _iter_matching_package_files(
     exclude_python: bool = True,
 ) -> Iterator:
     """Yield package resources that match the active filters."""
-    try:
-        for item in importlib.resources.files(package).iterdir():
-            if not item.is_file():
-                continue
-            if exclude_python and item.name.endswith(".py"):
-                continue
-            if suffix and not item.name.endswith(suffix):
-                continue
-            yield item
-    except _PACKAGE_RESOURCE_ERRORS:
+    package_root = _get_package_root(package)
+    if package_root is None:
         return
+    for item in package_root.iterdir():
+        if not item.is_file():
+            continue
+        if exclude_python and item.name.endswith(".py"):
+            continue
+        if suffix and not item.name.endswith(suffix):
+            continue
+        yield item
+
+
+def _read_package_file(
+    package: str,
+    filename: str,
+    reader: Callable[[object], str | bytes | Path],
+) -> str | bytes | Path | None:
+    """Read or transform a single package resource with shared error handling."""
+    resource = _get_package_file(package, filename)
+    if resource is None:
+        return None
+    try:
+        return reader(resource)
+    except _PACKAGE_RESOURCE_ERRORS:
+        return None
 
 
 def expand_path(path: str) -> str:
@@ -69,14 +92,12 @@ def read_package_text(package: str, filename: str) -> str | None:
     Returns:
         File contents as string, or None if not found
     """
-    resource = _get_package_file(package, filename)
-    if resource is None:
-        return None
-    try:
-        return resource.read_text(encoding="utf-8")
-    except _PACKAGE_RESOURCE_ERRORS:
-        pass
-    return None
+    result = _read_package_file(
+        package,
+        filename,
+        lambda resource: resource.read_text(encoding="utf-8"),
+    )
+    return result if isinstance(result, str) else None
 
 
 def read_package_bytes(package: str, filename: str) -> bytes | None:
@@ -89,14 +110,12 @@ def read_package_bytes(package: str, filename: str) -> bytes | None:
     Returns:
         File contents as bytes, or None if not found
     """
-    resource = _get_package_file(package, filename)
-    if resource is None:
-        return None
-    try:
-        return resource.read_bytes()
-    except _PACKAGE_RESOURCE_ERRORS:
-        pass
-    return None
+    result = _read_package_file(
+        package,
+        filename,
+        lambda resource: resource.read_bytes(),
+    )
+    return result if isinstance(result, bytes) else None
 
 
 def iter_package_files(
@@ -158,10 +177,8 @@ def get_package_file_path(package: str, filename: str) -> Path | None:
     Returns:
         Path to the resource, or None if not found
     """
-    resource = _get_package_file(package, filename)
-    if resource is None:
-        return None
-    return Path(str(resource))
+    result = _read_package_file(package, filename, lambda resource: Path(str(resource)))
+    return result if isinstance(result, Path) else None
 
 
 def check_port_available(port: int) -> bool:

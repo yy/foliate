@@ -71,6 +71,10 @@ class TestReadPackageBytes:
         result = read_package_bytes("foliate.defaults", "nonexistent.bin")
         assert result is None
 
+    def test_returns_none_for_missing_package(self):
+        result = read_package_bytes("nonexistent.package", "file.bin")
+        assert result is None
+
 
 class TestIterPackageFiles:
     """Tests for iter_package_files function."""
@@ -144,6 +148,10 @@ class TestGetPackageFilePath:
 
     def test_returns_none_for_missing_file(self):
         result = get_package_file_path("foliate.defaults", "nonexistent.txt")
+        assert result is None
+
+    def test_returns_none_for_missing_package(self):
+        result = get_package_file_path("nonexistent.package", "file.txt")
         assert result is None
 
 

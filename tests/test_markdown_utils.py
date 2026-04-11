@@ -95,6 +95,16 @@ class TestExtractDescription:
         assert "```" not in result
         assert "print" not in result
 
+    def test_prefers_wikilink_alias_text(self):
+        """Uses the visible alias text for wikilinks in descriptions."""
+        content = (
+            "This paragraph references [[Private Note|a readable label]] and "
+            "should keep only the visible label text in metadata."
+        )
+        result = markdown_utils.extract_description(content)
+        assert "Private Note|" not in result
+        assert "a readable label" in result
+
     def test_strips_headers(self):
         """Removes header markers."""
         content = (

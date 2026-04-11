@@ -56,7 +56,8 @@ _DESCRIPTION_PATTERNS = [
     (re.compile(r"!\[.*?\]\(.*?\)"), ""),
     # Remove links but keep text
     (re.compile(r"\[([^\]]+)\]\([^\)]+\)"), r"\1"),
-    # Remove wikilinks but keep text
+    # Remove wikilinks but keep visible text
+    (re.compile(r"\[\[[^\]|]+\|([^\]]+)\]\]"), r"\1"),
     (re.compile(r"\[\[([^\]]+)\]\]"), r"\1"),
     # Remove headers
     (re.compile(r"^#+\s+", re.MULTILINE), ""),
