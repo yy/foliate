@@ -55,6 +55,38 @@ class TestGetContentInfo:
         assert is_homepage is False
 
 
+class TestGetOutputPath:
+    """Tests for get_output_path() helper."""
+
+    def test_homepage_output_path(self, tmp_path):
+        """Homepage content should render at the build root."""
+        output = build.get_output_path(tmp_path, "about", "/", "wiki")
+
+        assert output == tmp_path / "about" / "index.html"
+
+    def test_wiki_output_path(self, tmp_path):
+        """Wiki content should render under the wiki prefix."""
+        output = build.get_output_path(tmp_path, "Notes/Ideas", "/wiki/", "wiki")
+
+        assert output == tmp_path / "wiki" / "Notes" / "Ideas" / "index.html"
+
+    def test_slugified_homepage_output_path(self, tmp_path):
+        """Slugified homepage paths should keep the root namespace."""
+        output = build.get_output_path(
+            tmp_path, "about me", "/", "wiki", slugify=True
+        )
+
+        assert output == tmp_path / "about-me" / "index.html"
+
+    def test_slugified_wiki_output_path(self, tmp_path):
+        """Slugified wiki paths should stay under the wiki prefix."""
+        output = build.get_output_path(
+            tmp_path, "Notes/about me", "/wiki/", "wiki", slugify=True
+        )
+
+        assert output == tmp_path / "wiki" / "Notes" / "about-me" / "index.html"
+
+
 class TestCreatePageObject:
     """Tests for Page.from_markdown() function."""
 

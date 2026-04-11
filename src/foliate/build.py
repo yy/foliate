@@ -84,11 +84,51 @@ def get_content_info(
     Returns:
         Tuple of (adjusted_page_path, base_url, is_homepage_content)
     """
+    route = _resolve_content_route(page_path, homepage_dir, wiki_base_url)
+    return route.page_path, route.base_url, route.is_homepage_content
+
+
+@dataclass(frozen=True)
+class ContentRoute:
+    """Logical routing information for a content page."""
+
+    page_path: str
+    base_url: str
+    is_homepage_content: bool
+
+    def output_file(
+        self,
+        build_dir: Path,
+        wiki_dir_name: str,
+        *,
+        slugify: bool = False,
+    ) -> Path:
+        """Return the built HTML path for this route."""
+        output_path = slugify_path(self.page_path) if slugify else self.page_path
+        if self.base_url == "/":
+            return build_dir / output_path / "index.html"
+        return build_dir / wiki_dir_name / output_path / "index.html"
+
+    def public_url(self, *, slugify: bool = False) -> str:
+        """Return the public URL for this route."""
+        url_path = slugify_path(self.page_path) if slugify else self.page_path
+        return f"{self.base_url}{url_path}/"
+
+
+def _resolve_content_route(
+    page_path: str,
+    homepage_dir: str,
+    wiki_base_url: str = "/wiki/",
+) -> ContentRoute:
+    """Resolve a logical page path into its URL namespace."""
     is_homepage = page_path.startswith(homepage_dir + "/")
-    base_url = "/" if is_homepage else wiki_base_url
     if is_homepage:
         page_path = page_path[len(homepage_dir) + 1 :]
-    return page_path, base_url, is_homepage
+    return ContentRoute(
+        page_path=page_path,
+        base_url="/" if is_homepage else wiki_base_url,
+        is_homepage_content=is_homepage,
+    )
 
 
 def get_output_path(
@@ -110,10 +150,12 @@ def get_output_path(
     Returns:
         Path to the output index.html file
     """
-    output_path = slugify_path(page_path) if slugify else page_path
-    if base_url == "/":
-        return build_dir / output_path / "index.html"
-    return build_dir / wiki_dir_name / output_path / "index.html"
+    route = ContentRoute(
+        page_path=page_path,
+        base_url=base_url,
+        is_homepage_content=base_url == "/",
+    )
+    return route.output_file(build_dir, wiki_dir_name, slugify=slugify)
 
 
 @dataclass(frozen=True)
@@ -185,16 +227,17 @@ def iter_content_source_candidates(
         if rel_path.parts and rel_path.parts[0] == ".foliate":
             continue
 
-        page_path = rel_path.with_suffix("").as_posix()
-        page_path, base_url, is_homepage_content = get_content_info(
-            page_path, homepage_dir, wiki_base_url
+        route = _resolve_content_route(
+            rel_path.with_suffix("").as_posix(),
+            homepage_dir,
+            wiki_base_url,
         )
 
         yield SourceCandidate(
             source_file=source_file,
-            page_path=page_path,
-            base_url=base_url,
-            is_homepage_content=is_homepage_content,
+            page_path=route.page_path,
+            base_url=route.base_url,
+            is_homepage_content=route.is_homepage_content,
         )
 
 
@@ -329,14 +372,14 @@ def render_page_to_file(
     """Render a page object to HTML file."""
     wiki_dir_name = config.build.wiki_prefix.strip("/")
     slugify = config.build.slugify_urls
-    output_page_path = slugify_path(page.path) if slugify else page.path
+    route = ContentRoute(
+        page_path=page.path,
+        base_url=base_url,
+        is_homepage_content=base_url == "/",
+    )
 
-    # Determine output directory
-    if base_url == "/":
-        page_dir = build_dir / output_page_path
-    else:
-        page_dir = build_dir / wiki_dir_name / output_page_path
-
+    output_file = route.output_file(build_dir, wiki_dir_name, slugify=slugify)
+    page_dir = output_file.parent
     page_dir.mkdir(parents=True, exist_ok=True)
 
     # Choose template
@@ -381,16 +424,15 @@ def render_page_to_file(
         **ctx,
     )
 
-    (page_dir / "index.html").write_text(html, encoding="utf-8")
+    output_file.write_text(html, encoding="utf-8")
 
     # Write legacy redirect at the original space-based path
-    if slugify and output_page_path != page.path:
-        if base_url == "/":
-            legacy_dir = build_dir / page.path
-        else:
-            legacy_dir = build_dir / wiki_dir_name / page.path
-        canonical_url = f"{base_url}{output_page_path}/"
-        _write_legacy_redirect(legacy_dir / "index.html", canonical_url)
+    legacy_output_file = route.output_file(build_dir, wiki_dir_name)
+    if slugify and legacy_output_file != output_file:
+        _write_legacy_redirect(
+            legacy_output_file,
+            route.public_url(slugify=True),
+        )
 
 
 def iter_public_md_files(
@@ -448,23 +490,20 @@ def _get_output_paths_for_source(
     except ValueError:
         return []
 
-    page_path = rel_path.with_suffix("").as_posix()
-    page_path, base_url, _ = get_content_info(
-        page_path, config.build.homepage_dir, config.base_urls["wiki"]
+    route = _resolve_content_route(
+        rel_path.with_suffix("").as_posix(),
+        config.build.homepage_dir,
+        config.base_urls["wiki"],
     )
     wiki_dir_name = config.build.wiki_prefix.strip("/")
 
     paths_to_remove = [
-        get_output_path(build_dir, page_path, base_url, wiki_dir_name),
+        route.output_file(build_dir, wiki_dir_name),
     ]
     if config.build.slugify_urls:
-        slugged = slugify_path(page_path)
-        if slugged != page_path:
-            paths_to_remove.append(
-                get_output_path(
-                    build_dir, page_path, base_url, wiki_dir_name, slugify=True
-                )
-            )
+        slugged_output = route.output_file(build_dir, wiki_dir_name, slugify=True)
+        if slugged_output != paths_to_remove[0]:
+            paths_to_remove.append(slugged_output)
     return paths_to_remove
 
 
@@ -704,16 +743,12 @@ def render_home_page(
 def generate_search_index(
     build_dir: Path,
     public_pages: list[Page],
-    base_url: str = "/wiki/",
     wiki_dir_name: str = "wiki",
-    slugify: bool = False,
 ) -> None:
     """Generate search.json for client-side search."""
     search_data = []
     for page in public_pages:
         content_preview = page.body[:500] if page.body else ""
-        page_base_url = page.base_url or base_url
-        url_path = slugify_path(page.path) if slugify else page.path
 
         published_str = page.published_at.isoformat() if page.published_at else ""
 
@@ -721,7 +756,7 @@ def generate_search_index(
             {
                 "title": page.title,
                 "path": page.path,
-                "url": f"{page_base_url}{url_path}/",
+                "url": page.url,
                 "content": content_preview,
                 "published": published_str,
                 "tags": page.tags,
@@ -738,13 +773,9 @@ def generate_search_index(
 def generate_sitemap(
     build_dir: Path,
     public_pages: list[Page],
-    slugify: bool = False,
 ) -> None:
     """Generate sitemap.txt with all public page URLs."""
-    sitemap_lines = [
-        f"{page.base_url}{slugify_path(page.path) if slugify else page.path}/"
-        for page in public_pages
-    ]
+    sitemap_lines = [page.url for page in public_pages]
     (build_dir / "sitemap.txt").write_text("\n".join(sitemap_lines), encoding="utf-8")
 
 
@@ -790,10 +821,8 @@ def generate_site_files(
         wiki_dir.mkdir(parents=True, exist_ok=True)
         (wiki_dir / "index.html").write_text(wiki_redirect_html, encoding="utf-8")
 
-    generate_search_index(
-        build_dir, published_pages, wiki_base_url, wiki_dir_name, slugify=slugify
-    )
-    generate_sitemap(build_dir, public_pages, slugify=slugify)
+    generate_search_index(build_dir, published_pages, wiki_dir_name)
+    generate_sitemap(build_dir, public_pages)
 
 
 # ---------------------------------------------------------------------------
