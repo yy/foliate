@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .build import (
+    ContentRoute,
     get_output_path,
     select_content_sources,
 )
@@ -30,9 +31,14 @@ class PageStatus:
     state: str  # "new", "modified", "unchanged"
 
     @property
+    def route(self) -> ContentRoute:
+        """Logical route for this page status."""
+        return ContentRoute.from_page_path(self.page_path, self.base_url)
+
+    @property
     def output_url(self) -> str:
         """The URL this page will be served at."""
-        return f"{self.base_url}{self.page_path}/"
+        return self.route.public_url()
 
 
 @dataclass

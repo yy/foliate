@@ -96,6 +96,32 @@ class ContentRoute:
     base_url: str
     is_homepage_content: bool
 
+    @classmethod
+    def from_content_path(
+        cls,
+        page_path: str,
+        homepage_dir: str,
+        wiki_base_url: str = "/wiki/",
+    ) -> "ContentRoute":
+        """Resolve a source-relative page path into its URL namespace."""
+        is_homepage = page_path.startswith(homepage_dir + "/")
+        if is_homepage:
+            page_path = page_path[len(homepage_dir) + 1 :]
+        return cls(
+            page_path=page_path,
+            base_url="/" if is_homepage else wiki_base_url,
+            is_homepage_content=is_homepage,
+        )
+
+    @classmethod
+    def from_page_path(cls, page_path: str, base_url: str) -> "ContentRoute":
+        """Build route metadata from a logical page path and base URL."""
+        return cls(
+            page_path=page_path,
+            base_url=base_url,
+            is_homepage_content=base_url == "/",
+        )
+
     def output_file(
         self,
         build_dir: Path,
@@ -121,14 +147,7 @@ def _resolve_content_route(
     wiki_base_url: str = "/wiki/",
 ) -> ContentRoute:
     """Resolve a logical page path into its URL namespace."""
-    is_homepage = page_path.startswith(homepage_dir + "/")
-    if is_homepage:
-        page_path = page_path[len(homepage_dir) + 1 :]
-    return ContentRoute(
-        page_path=page_path,
-        base_url="/" if is_homepage else wiki_base_url,
-        is_homepage_content=is_homepage,
-    )
+    return ContentRoute.from_content_path(page_path, homepage_dir, wiki_base_url)
 
 
 def get_output_path(
@@ -150,11 +169,7 @@ def get_output_path(
     Returns:
         Path to the output index.html file
     """
-    route = ContentRoute(
-        page_path=page_path,
-        base_url=base_url,
-        is_homepage_content=base_url == "/",
-    )
+    route = ContentRoute.from_page_path(page_path, base_url)
     return route.output_file(build_dir, wiki_dir_name, slugify=slugify)
 
 
@@ -372,11 +387,7 @@ def render_page_to_file(
     """Render a page object to HTML file."""
     wiki_dir_name = config.build.wiki_prefix.strip("/")
     slugify = config.build.slugify_urls
-    route = ContentRoute(
-        page_path=page.path,
-        base_url=base_url,
-        is_homepage_content=base_url == "/",
-    )
+    route = ContentRoute.from_page_path(page.path, base_url)
 
     output_file = route.output_file(build_dir, wiki_dir_name, slugify=slugify)
     page_dir = output_file.parent

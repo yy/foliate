@@ -546,6 +546,22 @@ quarto_enabled = true
 class TestPageStatus:
     """Tests for PageStatus dataclass."""
 
+    def test_route_wiki(self):
+        """PageStatus exposes the same route metadata used by build."""
+        ps = PageStatus(
+            page_path="Notes/Ideas",
+            source_file=None,
+            base_url="/wiki/",
+            is_homepage_content=False,
+            public=True,
+            published=False,
+            state="new",
+        )
+
+        assert ps.route.page_path == "Notes/Ideas"
+        assert ps.route.base_url == "/wiki/"
+        assert ps.route.is_homepage_content is False
+
     def test_output_url_wiki(self):
         """Wiki pages have /wiki/ prefix in URL."""
         ps = PageStatus(

@@ -87,6 +87,26 @@ class TestGetOutputPath:
         assert output == tmp_path / "wiki" / "Notes" / "about-me" / "index.html"
 
 
+class TestContentRoute:
+    """Tests for ContentRoute helper constructors."""
+
+    def test_from_content_path_for_homepage_content(self):
+        """Content paths under the homepage directory map to root URLs."""
+        route = build.ContentRoute.from_content_path("_homepage/about", "_homepage")
+
+        assert route.page_path == "about"
+        assert route.base_url == "/"
+        assert route.is_homepage_content is True
+
+    def test_from_page_path_marks_wiki_routes(self):
+        """Logical wiki pages keep their wiki namespace metadata."""
+        route = build.ContentRoute.from_page_path("Notes/Ideas", "/wiki/")
+
+        assert route.page_path == "Notes/Ideas"
+        assert route.base_url == "/wiki/"
+        assert route.is_homepage_content is False
+
+
 class TestCreatePageObject:
     """Tests for Page.from_markdown() function."""
 
