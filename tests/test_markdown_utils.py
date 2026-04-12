@@ -105,6 +105,16 @@ class TestExtractDescription:
         assert "Private Note|" not in result
         assert "a readable label" in result
 
+    def test_strips_wikilink_anchor_from_visible_description_text(self):
+        """Bare wikilinks with heading anchors should use the visible page text."""
+        content = (
+            "This paragraph references [[Claude Code/Tips#tmux + Neovim Setup]] "
+            "and should not leak the raw anchor into metadata descriptions."
+        )
+        result = markdown_utils.extract_description(content)
+        assert "#tmux + Neovim Setup" not in result
+        assert "Claude Code/Tips" in result
+
     def test_strips_headers(self):
         """Removes header markers."""
         content = (
