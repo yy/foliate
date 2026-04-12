@@ -7,6 +7,7 @@ with proper error handling for missing resources.
 import importlib.resources
 import os
 from collections.abc import Callable, Iterator
+from importlib.resources.abc import Traversable
 from pathlib import Path
 
 _PACKAGE_RESOURCE_ERRORS = (
@@ -58,7 +59,7 @@ def _iter_matching_package_files(
 def _read_package_file(
     package: str,
     filename: str,
-    reader: Callable[[object], str | bytes | Path],
+    reader: Callable[[Traversable], str | bytes | Path],
 ) -> str | bytes | Path | None:
     """Read or transform a single package resource with shared error handling."""
     resource = _get_package_file(package, filename)
