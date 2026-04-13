@@ -37,6 +37,10 @@ _REDIRECT_TEMPLATE = """\
 """
 
 
+class ContentRouteCollisionError(ValueError):
+    """Raised when distinct content namespaces collapse to the same route."""
+
+
 def _write_legacy_redirect(legacy_output_path: Path, canonical_url: str) -> None:
     """Write a redirect stub at the legacy (space-based) path."""
     legacy_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -281,6 +285,52 @@ def _source_output_key(candidate: SourceCandidate) -> tuple[str, str]:
     return candidate.page_path, candidate.base_url
 
 
+def _find_namespace_collisions(
+    candidates: Iterable[SourceCandidate],
+) -> list[tuple[tuple[str, str], list[SourceCandidate]]]:
+    """Return homepage/wiki collisions that resolve to the same public route."""
+    grouped_candidates: dict[tuple[str, str], list[SourceCandidate]] = {}
+    for candidate in candidates:
+        key = _source_output_key(candidate)
+        grouped_candidates.setdefault(key, []).append(candidate)
+
+    collisions: list[tuple[tuple[str, str], list[SourceCandidate]]] = []
+    for output_key, grouped in grouped_candidates.items():
+        namespaces = {candidate.is_homepage_content for candidate in grouped}
+        if len(grouped) > 1 and len(namespaces) > 1:
+            collisions.append(
+                (
+                    output_key,
+                    sorted(
+                        grouped, key=lambda candidate: candidate.source_file.as_posix()
+                    ),
+                )
+            )
+
+    return collisions
+
+
+def _raise_namespace_collisions(candidates: list[SourceCandidate]) -> None:
+    """Raise when homepage and wiki content collapse to the same route."""
+    collisions = _find_namespace_collisions(candidates)
+    if not collisions:
+        return
+
+    formatted = []
+    for (page_path, base_url), grouped in collisions:
+        source_files = ", ".join(
+            candidate.source_file.as_posix() for candidate in grouped
+        )
+        formatted.append(f"{base_url}{page_path}/ ({source_files})")
+
+    raise ContentRouteCollisionError(
+        "Conflicting homepage/wiki routes detected: "
+        + "; ".join(formatted)
+        + ". Rename one page or set [build].wiki_prefix"
+        " to keep the namespaces distinct."
+    )
+
+
 def select_preferred_sources(
     candidates: Iterable[SourceCandidate],
     on_duplicate: Callable[[str, SourceCandidate, list[SourceCandidate]], None]
@@ -326,12 +376,15 @@ def select_content_sources(
     duplicate_label: str | None = None,
 ) -> list[SourceCandidate]:
     """Return the preferred content source for each logical page path."""
+    candidates = list(iter_content_source_candidates(vault_path, config, suffixes))
+    _raise_namespace_collisions(candidates)
+
     on_duplicate = None
     if duplicate_label is not None:
         on_duplicate = make_duplicate_warning_callback(vault_path, duplicate_label)
 
     return select_preferred_sources(
-        iter_content_source_candidates(vault_path, config, suffixes),
+        candidates,
         on_duplicate=on_duplicate,
     )
 
@@ -962,12 +1015,23 @@ def build(
         error(f"Vault directory '{vault_path}' does not exist")
         return 0
 
-    # Preprocess Quarto files (.qmd -> .md)
-    if config.advanced.quarto_enabled:
-        from .quarto import preprocess_quarto
+    try:
+        # Preprocess Quarto files (.qmd -> .md)
+        if config.advanced.quarto_enabled:
+            from .quarto import preprocess_quarto
 
-        debug("Preprocessing Quarto files...")
-        preprocess_quarto(config, force=force_rebuild)
+            debug("Preprocessing Quarto files...")
+            preprocess_quarto(config, force=force_rebuild)
+
+        # Validate source routes before touching the build directory.
+        from .quarto import get_buildable_content_suffixes
+
+        select_content_sources(
+            vault_path, config, get_buildable_content_suffixes(config)
+        )
+    except ContentRouteCollisionError as exc:
+        error(str(exc))
+        return 0
 
     # Setup build environment (force_rebuild may be updated if config/templates changed)
     build_dir, cache_file, build_cache, env, force_rebuild = _setup_build_environment(

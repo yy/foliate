@@ -144,8 +144,14 @@ def is_build_stale(config: Config) -> bool | None:
 
     cache_file = config.get_cache_dir() / BUILD_CACHE_FILE
     build_cache = load_build_cache(cache_file)
-    if build_cache and _did_public_source_set_change(config, build_cache):
-        return True
+    if build_cache:
+        from .build import ContentRouteCollisionError
+
+        try:
+            if _did_public_source_set_change(config, build_cache):
+                return True
+        except ContentRouteCollisionError:
+            return True
 
     # Get the most recent source modification time
     source_mtime = _get_newest_source_mtime(config)

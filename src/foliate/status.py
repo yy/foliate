@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .build import (
     ContentRoute,
+    ContentRouteCollisionError,
     get_output_path,
     select_content_sources,
 )
@@ -167,12 +168,18 @@ def scan_status(config: Config) -> StatusReport:
     last_deploy_time = _get_last_deploy_time(deploy_dir) if deploy_dir else None
 
     pages: list[PageStatus] = []
-    selected_sources = select_content_sources(
-        vault_path,
-        config,
-        get_buildable_content_suffixes(config),
-        duplicate_label="source files",
-    )
+    try:
+        selected_sources = select_content_sources(
+            vault_path,
+            config,
+            get_buildable_content_suffixes(config),
+            duplicate_label="source files",
+        )
+    except ContentRouteCollisionError as exc:
+        from .logging import error
+
+        error(str(exc))
+        return StatusReport(pages=[])
 
     for source in selected_sources:
         meta, _ = parse_markdown_file(source.source_file)

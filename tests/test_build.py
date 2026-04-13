@@ -72,9 +72,7 @@ class TestGetOutputPath:
 
     def test_slugified_homepage_output_path(self, tmp_path):
         """Slugified homepage paths should keep the root namespace."""
-        output = build.get_output_path(
-            tmp_path, "about me", "/", "wiki", slugify=True
-        )
+        output = build.get_output_path(tmp_path, "about me", "/", "wiki", slugify=True)
 
         assert output == tmp_path / "about-me" / "index.html"
 
@@ -455,9 +453,7 @@ slugify_urls = true
         result = build.build(config=config, force_rebuild=True)
 
         assert result == 2
-        assert (
-            vault_path / ".foliate" / "build" / "about-me" / "index.html"
-        ).exists()
+        assert (vault_path / ".foliate" / "build" / "about-me" / "index.html").exists()
         assert (
             vault_path / ".foliate" / "build" / "wiki" / "about-me" / "index.html"
         ).exists()
@@ -939,6 +935,38 @@ Home page.
         # With empty wiki_prefix, there's no wiki directory to redirect
         wiki_dir = vault_path / ".foliate" / "build" / "wiki"
         assert not wiki_dir.exists()
+
+    def test_empty_wiki_prefix_rejects_homepage_and_wiki_route_collision(
+        self, tmp_path
+    ):
+        """Build should fail when homepage/wiki content collapse to the same route."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+
+[build]
+wiki_prefix = ""
+home_redirect = "about"
+"""
+        )
+
+        homepage_dir = vault_path / "_homepage"
+        homepage_dir.mkdir()
+        (homepage_dir / "about.md").write_text("---\npublic: true\n---\nHomepage")
+        (vault_path / "about.md").write_text("---\npublic: true\n---\nWiki")
+
+        config = Config.load(config_path)
+        result = build.build(config=config, force_rebuild=True)
+
+        assert result == 0
+        assert not (vault_path / ".foliate" / "build").exists()
 
     def test_single_page_build_does_not_regenerate_global_indexes(self, tmp_path):
         """single_page build should not overwrite search/sitemap with partial data."""
