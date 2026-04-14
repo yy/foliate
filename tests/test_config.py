@@ -167,6 +167,29 @@ window = 7
         assert config.feed.full_content is False
         assert config.feed.window == 7
 
+    def test_expands_paths_in_advanced_and_deploy_sections(
+        self, tmp_path, monkeypatch
+    ):
+        """Path-valued config fields keep their expansion behavior."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[advanced]
+quarto_python = "~/bin/python3"
+
+[deploy]
+target = "~/site-deploy"
+"""
+        )
+
+        config = Config.load(config_path)
+
+        assert config.advanced.quarto_python == str(tmp_path / "bin" / "python3")
+        assert config.deploy.target == str(tmp_path / "site-deploy")
+
     def test_nav_items_loaded(self, tmp_path):
         """Nav items preserve configured values."""
         config_dir = tmp_path / ".foliate"

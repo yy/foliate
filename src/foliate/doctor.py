@@ -70,16 +70,26 @@ def run_doctor(
             ok.append("Feed template found: feed.xml")
 
     user_templates = vault_path / ".foliate" / "templates"
-    if user_templates.exists():
+    if user_templates.is_dir():
         ok.append(
             f"User templates directory: {_display_path(user_templates, start_path)}"
+        )
+    elif user_templates.exists():
+        warnings.append(
+            f"User templates path is not a directory: "
+            f"{_display_path(user_templates, start_path)}"
         )
     else:
         ok.append("User templates directory not found (using bundled defaults).")
 
     user_static = vault_path / ".foliate" / "static"
-    if user_static.exists():
+    if user_static.is_dir():
         ok.append(f"User static directory: {_display_path(user_static, start_path)}")
+    elif user_static.exists():
+        warnings.append(
+            f"User static path is not a directory: "
+            f"{_display_path(user_static, start_path)}"
+        )
     else:
         ok.append("User static directory not found (using bundled defaults).")
 

@@ -386,6 +386,36 @@ class TestDoctorCommand:
             assert "Invalid configuration:" in result.output
             assert "must be a table" in result.output
 
+    def test_warns_when_templates_path_is_a_file(self):
+        """Should warn when .foliate/templates exists but is not a directory."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text("")
+            (foliate_dir / "templates").write_text("not a directory")
+
+            result = runner.invoke(main, ["doctor"])
+
+            assert result.exit_code == 0
+            assert "Warning: User templates path is not a directory:" in result.output
+            assert "OK: User templates directory:" not in result.output
+
+    def test_warns_when_static_path_is_a_file(self):
+        """Should warn when .foliate/static exists but is not a directory."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text("")
+            (foliate_dir / "static").write_text("not a directory")
+
+            result = runner.invoke(main, ["doctor"])
+
+            assert result.exit_code == 0
+            assert "Warning: User static path is not a directory:" in result.output
+            assert "OK: User static directory:" not in result.output
+
 
 class TestDeployCommand:
     """Tests for the deploy command."""

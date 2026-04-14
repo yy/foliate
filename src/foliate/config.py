@@ -124,6 +124,29 @@ def _load_dataclass(
     return cls(**kwargs)
 
 
+def _load_optional_dataclass_section(
+    data: dict[str, object],
+    section: str,
+    cls: type[T],
+    defaults: T,
+    config_path: Path,
+    *,
+    transforms: dict[str, Callable[[object], object]] | None = None,
+) -> T:
+    """Load an optional config table into a dataclass, preserving defaults."""
+    section_data = _require_section_dict(data, section, config_path)
+    if section_data is None:
+        return defaults
+    return _load_dataclass(
+        cls,
+        section_data,
+        defaults,
+        transforms=transforms,
+        section=section,
+        config_path=config_path,
+    )
+
+
 def _require_section_dict(
     data: dict[str, object], section: str, config_path: Path
 ) -> dict[str, object] | None:
@@ -347,68 +370,35 @@ class Config:
         }
         _warn_unknown_keys(data, valid_sections, "top-level", config_path)
 
-        # Load simple config sections using helper
-        site_data = _require_section_dict(data, "site", config_path)
-        if site_data is not None:
-            config.site = _load_dataclass(
-                SiteConfig,
-                site_data,
-                config.site,
-                section="site",
-                config_path=config_path,
-            )
-
-        build_data = _require_section_dict(data, "build", config_path)
-        if build_data is not None:
-            config.build = _load_dataclass(
-                BuildConfig,
-                build_data,
-                config.build,
-                section="build",
-                config_path=config_path,
-            )
-
-        footer_data = _require_section_dict(data, "footer", config_path)
-        if footer_data is not None:
-            config.footer = _load_dataclass(
-                FooterConfig,
-                footer_data,
-                config.footer,
-                section="footer",
-                config_path=config_path,
-            )
-
-        advanced_data = _require_section_dict(data, "advanced", config_path)
-        if advanced_data is not None:
-            config.advanced = _load_dataclass(
-                AdvancedConfig,
-                advanced_data,
-                config.advanced,
-                transforms={"quarto_python": _expand_path_value},
-                section="advanced",
-                config_path=config_path,
-            )
-
-        deploy_data = _require_section_dict(data, "deploy", config_path)
-        if deploy_data is not None:
-            config.deploy = _load_dataclass(
-                DeployConfig,
-                deploy_data,
-                config.deploy,
-                transforms={"target": _expand_path_value},
-                section="deploy",
-                config_path=config_path,
-            )
-
-        feed_data = _require_section_dict(data, "feed", config_path)
-        if feed_data is not None:
-            config.feed = _load_dataclass(
-                FeedConfig,
-                feed_data,
-                config.feed,
-                section="feed",
-                config_path=config_path,
-            )
+        # Load optional dataclass-backed sections through one shared path.
+        config.site = _load_optional_dataclass_section(
+            data, "site", SiteConfig, config.site, config_path
+        )
+        config.build = _load_optional_dataclass_section(
+            data, "build", BuildConfig, config.build, config_path
+        )
+        config.footer = _load_optional_dataclass_section(
+            data, "footer", FooterConfig, config.footer, config_path
+        )
+        config.advanced = _load_optional_dataclass_section(
+            data,
+            "advanced",
+            AdvancedConfig,
+            config.advanced,
+            config_path,
+            transforms={"quarto_python": _expand_path_value},
+        )
+        config.deploy = _load_optional_dataclass_section(
+            data,
+            "deploy",
+            DeployConfig,
+            config.deploy,
+            config_path,
+            transforms={"target": _expand_path_value},
+        )
+        config.feed = _load_optional_dataclass_section(
+            data, "feed", FeedConfig, config.feed, config_path
+        )
 
         config.nav = _load_nav_items(
             data,
