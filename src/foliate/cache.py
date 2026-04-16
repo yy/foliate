@@ -80,10 +80,10 @@ def get_templates_mtime(vault_path: Path) -> float:
 
     max_mtime = 0.0
 
-    # Check user templates
+    # Check user templates, including nested partials/includes.
     user_templates = vault_path / ".foliate" / "templates"
     if user_templates.exists():
-        for template_file in user_templates.glob("*.html"):
+        for template_file in user_templates.rglob("*.html"):
             max_mtime = max(max_mtime, template_file.stat().st_mtime)
 
     # Check bundled templates

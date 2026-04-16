@@ -1,5 +1,6 @@
 """Tests for foliate build system."""
 
+import time
 from unittest.mock import patch
 
 from jinja2 import Environment
@@ -457,6 +458,45 @@ slugify_urls = true
         assert (
             vault_path / ".foliate" / "build" / "wiki" / "about-me" / "index.html"
         ).exists()
+
+    def test_incremental_build_rebuilds_when_nested_template_changes(self, tmp_path):
+        """Nested user template includes should invalidate incremental builds."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        templates_dir = foliate_dir / "templates"
+        partials_dir = templates_dir / "partials"
+        partials_dir.mkdir(parents=True)
+
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+name = "Test Site"
+"""
+        )
+
+        (vault_path / "test.md").write_text("---\npublic: true\n---\nHello")
+        (templates_dir / "page.html").write_text(
+            '<html>{% include "partials/snippet.html" %}{{ content }}</html>'
+        )
+        partial = partials_dir / "snippet.html"
+        partial.write_text("OLD")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True, incremental=True)
+
+        output_file = vault_path / ".foliate" / "build" / "wiki" / "test" / "index.html"
+        assert "OLD" in output_file.read_text()
+
+        time.sleep(0.05)
+        partial.write_text("NEW")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=False, incremental=True)
+
+        assert "NEW" in output_file.read_text()
 
     def test_search_index_uses_page_base_url_for_homepage_content(self, tmp_path):
         """search.json should use / URLs for _homepage content."""
