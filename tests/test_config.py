@@ -1,5 +1,7 @@
 """Tests for foliate configuration."""
 
+import os
+
 from foliate.config import Config
 
 
@@ -194,6 +196,7 @@ window = 7
     def test_expands_paths_in_advanced_and_deploy_sections(self, tmp_path, monkeypatch):
         """Path-valued config fields keep their expansion behavior."""
         monkeypatch.setenv("HOME", str(tmp_path))
+        # os.path.expanduser on Windows uses USERPROFILE, not HOME.
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
         config_dir = tmp_path / ".foliate"
         config_dir.mkdir()
@@ -210,8 +213,12 @@ target = "~/site-deploy"
 
         config = Config.load(config_path)
 
-        assert config.advanced.quarto_python == str(tmp_path / "bin" / "python3")
-        assert config.deploy.target == str(tmp_path / "site-deploy")
+        # Normalize separators: expanduser preserves forward slashes after ~,
+        # while Path uses OS-native separators. Compare canonical forms.
+        assert os.path.normpath(config.advanced.quarto_python) == str(
+            tmp_path / "bin" / "python3"
+        )
+        assert os.path.normpath(config.deploy.target) == str(tmp_path / "site-deploy")
 
     def test_resolve_deploy_target_relative_to_vault(self, tmp_path):
         """Relative deploy target paths resolve from the vault root."""
