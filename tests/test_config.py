@@ -194,6 +194,7 @@ window = 7
     def test_expands_paths_in_advanced_and_deploy_sections(self, tmp_path, monkeypatch):
         """Path-valued config fields keep their expansion behavior."""
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         config_dir = tmp_path / ".foliate"
         config_dir.mkdir()
         config_path = config_dir / "config.toml"
