@@ -395,6 +395,38 @@ class TestDeployGithubPages:
 
             assert result is False
 
+    def test_returns_false_when_deploy_target_unset(self, capsys):
+        """Should treat an empty deploy target as missing, not cwd/vault root."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+            config.deploy = DeployConfig(target="")
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+
+            result = deploy_github_pages(config)
+            captured = capsys.readouterr()
+
+            assert result is False
+            assert "No deploy target configured" in captured.err
+
+    def test_returns_false_when_deploy_target_whitespace(self, capsys):
+        """Whitespace-only deploy targets should be treated as missing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config()
+            config.vault_path = Path(tmpdir)
+            config.deploy = DeployConfig(target="   ")
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+
+            result = deploy_github_pages(config)
+            captured = capsys.readouterr()
+
+            assert result is False
+            assert "No deploy target configured" in captured.err
+
     def test_returns_false_when_target_missing(self):
         """Should return False when target directory doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -436,15 +468,8 @@ class TestDeployGithubPages:
             config.vault_path = Path(tmpdir)
             config.deploy = DeployConfig(target="../sibling")
 
-            # The target should be resolved relative to vault_path
-            # This test verifies the logic without actually running deploy
-            target = Path(config.deploy.target)
-
-            if not target.is_absolute() and config.vault_path:
-                target = (config.vault_path / target).resolve()
-
             # Should resolve to sibling of tmpdir
-            assert "sibling" in str(target)
+            assert "sibling" in str(config.resolve_deploy_target())
 
     @patch("foliate.deploy.subprocess.run")
     def test_dry_run_does_not_commit(self, mock_run):

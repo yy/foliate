@@ -250,7 +250,7 @@ def deploy(dry_run: bool, message: str, build: bool, verbose: bool):
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
-    if not config.deploy.target:
+    if config.resolve_deploy_target() is None:
         click.echo("Error: No deploy target configured", err=True)
         click.echo("Add [deploy] section to .foliate/config.toml", err=True)
         raise SystemExit(1)

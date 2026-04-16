@@ -369,11 +369,10 @@ def deploy_github_pages(
         info(f"Built {result} pages\n")
 
     build_dir = config.get_build_dir()
-    target = Path(config.deploy.target)
-
-    # Resolve relative paths relative to vault_path
-    if not target.is_absolute() and config.vault_path:
-        target = (config.vault_path / target).resolve()
+    target = config.resolve_deploy_target()
+    if target is None:
+        error("No deploy target configured")
+        return False
 
     # Validate build directory exists
     if not build_dir.exists():

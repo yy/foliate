@@ -76,11 +76,9 @@ class StatusReport:
 
 def _resolve_deploy_dir(config: Config) -> Path | None:
     """Resolve the deploy target directory, if configured and exists."""
-    if not config.deploy.target:
+    target = config.resolve_deploy_target()
+    if target is None:
         return None
-    target = Path(config.deploy.target)
-    if not target.is_absolute() and config.vault_path:
-        target = (config.vault_path / target).resolve()
     if target.exists():
         return target
     return None

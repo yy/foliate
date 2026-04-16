@@ -82,6 +82,30 @@ ignored_folders = ["_private", "drafts"]
         assert config.get_build_dir() == tmp_path / ".foliate" / "build"
         assert config.get_cache_dir() == tmp_path / ".foliate" / "cache"
 
+    def test_resolve_deploy_target_returns_none_when_unset(self, tmp_path):
+        """Missing deploy target resolves to None."""
+        config_path = tmp_path / ".foliate" / "config.toml"
+
+        config = Config.load(config_path)
+
+        assert config.resolve_deploy_target() is None
+
+    def test_resolve_deploy_target_returns_none_when_whitespace(self, tmp_path):
+        """Whitespace-only deploy targets resolve to None."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[deploy]
+target = "   "
+"""
+        )
+
+        config = Config.load(config_path)
+
+        assert config.resolve_deploy_target() is None
+
     def test_wiki_prefix_default(self, tmp_path):
         """Default wiki_prefix is 'wiki'."""
         config_path = tmp_path / ".foliate" / "config.toml"
@@ -167,9 +191,7 @@ window = 7
         assert config.feed.full_content is False
         assert config.feed.window == 7
 
-    def test_expands_paths_in_advanced_and_deploy_sections(
-        self, tmp_path, monkeypatch
-    ):
+    def test_expands_paths_in_advanced_and_deploy_sections(self, tmp_path, monkeypatch):
         """Path-valued config fields keep their expansion behavior."""
         monkeypatch.setenv("HOME", str(tmp_path))
         config_dir = tmp_path / ".foliate"
@@ -189,6 +211,23 @@ target = "~/site-deploy"
 
         assert config.advanced.quarto_python == str(tmp_path / "bin" / "python3")
         assert config.deploy.target == str(tmp_path / "site-deploy")
+
+    def test_resolve_deploy_target_relative_to_vault(self, tmp_path):
+        """Relative deploy target paths resolve from the vault root."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[deploy]
+target = "../site-deploy"
+"""
+        )
+
+        config = Config.load(config_path)
+        expected_target = (tmp_path / ".." / "site-deploy").resolve()
+
+        assert config.resolve_deploy_target() == expected_target
 
     def test_nav_items_loaded(self, tmp_path):
         """Nav items preserve configured values."""

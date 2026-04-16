@@ -471,6 +471,17 @@ class Config:
             return self.vault_path / ".foliate" / "cache"
         return Path.cwd() / ".foliate" / "cache"
 
+    def resolve_deploy_target(self) -> Path | None:
+        """Resolve the configured deploy target path."""
+        raw_target = self.deploy.target.strip()
+        if not raw_target:
+            return None
+
+        target = Path(raw_target)
+        if not target.is_absolute() and self.vault_path:
+            target = (self.vault_path / target).resolve()
+        return target
+
     def get_templates_dir(self) -> Path | None:
         """Get custom templates directory if it exists."""
         if self.vault_path:
