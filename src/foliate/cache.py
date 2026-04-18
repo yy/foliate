@@ -65,6 +65,16 @@ def needs_rebuild(
     return True
 
 
+def _get_existing_mtime(path: Path | None) -> float:
+    """Return a filesystem mtime when a path exists, otherwise 0."""
+    if path is None:
+        return 0.0
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def get_templates_mtime(vault_path: Path) -> float:
     """Get the most recent modification time of all template files.
 
@@ -104,7 +114,27 @@ def get_templates_mtime(vault_path: Path) -> float:
     return max_mtime
 
 
-def check_global_deps_changed(cache: dict, config_path: Path, vault_path: Path) -> bool:
+def get_global_deps_mtimes(
+    config_path: Path | None, vault_path: Path
+) -> dict[str, float]:
+    """Return current mtimes for build-wide config and template dependencies."""
+    mtimes = {TEMPLATES_MTIME_KEY: get_templates_mtime(vault_path)}
+
+    config_mtime = _get_existing_mtime(config_path)
+    if config_mtime:
+        mtimes[CONFIG_MTIME_KEY] = config_mtime
+
+    return mtimes
+
+
+def get_global_deps_mtime(config_path: Path | None, vault_path: Path) -> float:
+    """Return the newest mtime among build-wide dependencies."""
+    return max(get_global_deps_mtimes(config_path, vault_path).values(), default=0.0)
+
+
+def check_global_deps_changed(
+    cache: dict, config_path: Path | None, vault_path: Path
+) -> bool:
     """Check if global dependencies (config, templates) have changed.
 
     Args:
@@ -115,23 +145,16 @@ def check_global_deps_changed(cache: dict, config_path: Path, vault_path: Path) 
     Returns:
         True if config or templates changed since last build
     """
-    # Check config.toml
-    if config_path and config_path.exists():
-        config_mtime = config_path.stat().st_mtime
-        cached_config_mtime = cache.get(CONFIG_MTIME_KEY, 0)
-        if config_mtime > cached_config_mtime:
-            return True
-
-    # Check templates
-    templates_mtime = get_templates_mtime(vault_path)
-    cached_templates_mtime = cache.get(TEMPLATES_MTIME_KEY, 0)
-    if templates_mtime > cached_templates_mtime:
-        return True
-
-    return False
+    current_mtimes = get_global_deps_mtimes(config_path, vault_path)
+    return any(
+        current_mtime > cache.get(cache_key, 0)
+        for cache_key, current_mtime in current_mtimes.items()
+    )
 
 
-def update_global_deps_cache(cache: dict, config_path: Path, vault_path: Path) -> None:
+def update_global_deps_cache(
+    cache: dict, config_path: Path | None, vault_path: Path
+) -> None:
     """Update cache with current global dependency mtimes.
 
     Args:
@@ -139,7 +162,4 @@ def update_global_deps_cache(cache: dict, config_path: Path, vault_path: Path) -
         config_path: Path to config.toml
         vault_path: Path to the vault directory
     """
-    if config_path and config_path.exists():
-        cache[CONFIG_MTIME_KEY] = config_path.stat().st_mtime
-
-    cache[TEMPLATES_MTIME_KEY] = get_templates_mtime(vault_path)
+    cache.update(get_global_deps_mtimes(config_path, vault_path))

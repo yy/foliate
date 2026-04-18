@@ -86,3 +86,29 @@ class TestBuildCache:
         result = build_cache.load_build_cache(cache_file)
 
         assert result == {}
+
+
+class TestGlobalDependencyCache:
+    """Tests for config/template dependency cache helpers."""
+
+    def test_get_global_deps_mtime_includes_config(self, tmp_path):
+        """Global dependency mtime should include config.toml."""
+        config_path = tmp_path / ".foliate" / "config.toml"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text("[site]\nname = 'Test'")
+
+        result = build_cache.get_global_deps_mtime(config_path, tmp_path)
+
+        assert result >= config_path.stat().st_mtime
+
+    def test_update_global_deps_cache_uses_current_mtimes(self, tmp_path):
+        """Updating cache should record current config and template mtimes."""
+        config_path = tmp_path / ".foliate" / "config.toml"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text("[site]\nname = 'Test'")
+
+        cache: dict[str, float] = {}
+        build_cache.update_global_deps_cache(cache, config_path, tmp_path)
+
+        assert cache[build_cache.CONFIG_MTIME_KEY] == config_path.stat().st_mtime
+        assert build_cache.TEMPLATES_MTIME_KEY in cache
