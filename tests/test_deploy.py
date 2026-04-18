@@ -122,6 +122,27 @@ class TestIsBuildStale:
 
             assert result is True
 
+    @patch("foliate.cache.get_global_deps_mtime")
+    def test_returns_true_when_bundled_template_is_newer_than_build(
+        self, mock_global_deps_mtime
+    ):
+        """Bundled template updates should also mark the build stale."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            build_dir = vault / ".foliate" / "build"
+            build_dir.mkdir(parents=True)
+            build_file = build_dir / "test.html"
+            build_file.write_text("<html>Test</html>")
+
+            mock_global_deps_mtime.return_value = build_file.stat().st_mtime + 10
+
+            result = is_build_stale(config)
+
+            assert result is True
+
     def test_returns_true_when_user_static_modified_after_build(self):
         """Should return True when user static files are newer than build."""
         with tempfile.TemporaryDirectory() as tmpdir:

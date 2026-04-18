@@ -301,25 +301,25 @@ def _get_newest_source_mtime(config: Config) -> float:
         Most recent mtime, or 0 if no files found
     """
     from .assets import SUPPORTED_ASSET_EXTENSIONS
+    from .cache import get_global_deps_mtime
 
     vault_path = config.vault_path
 
     if not vault_path:
         return 0.0
 
-    return _get_newest_mtime(
-        (
-            path
-            for paths in (
-                _iter_content_source_files(config),
-                _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
-                _iter_existing_file(vault_path / ".foliate" / "config.toml"),
-                _iter_files(vault_path / ".foliate" / "templates"),
-                _iter_files(vault_path / ".foliate" / "static"),
-            )
-            for path in paths
+    file_mtime = _get_newest_mtime(
+        path
+        for paths in (
+            _iter_content_source_files(config),
+            _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
+            _iter_existing_file(vault_path / ".foliate" / "config.toml"),
+            _iter_files(vault_path / ".foliate" / "templates"),
+            _iter_files(vault_path / ".foliate" / "static"),
         )
+        for path in paths
     )
+    return max(file_mtime, get_global_deps_mtime(config.config_path, vault_path))
 
 
 def _run_command(args: list[str], error_label: str, **kwargs):
