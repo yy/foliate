@@ -1,6 +1,7 @@
 """Tests for the typed page model."""
 
 import os
+import time
 from datetime import date, datetime, timezone
 
 from foliate.page import Page, parse_frontmatter_date
@@ -299,3 +300,48 @@ class TestPageFromMarkdown:
 
         assert page.file_mtime is not None
         assert page.file_modified is not None
+
+    def test_file_modified_uses_same_utc_date_as_modified_display(
+        self, tmp_path, monkeypatch
+    ):
+        original_tz = os.environ.get("TZ")
+        file_mtime = 1710460800.0
+        md_file = tmp_path / "page.md"
+        md_file.write_text("Body")
+        os.utime(md_file, (file_mtime, file_mtime))
+
+        monkeypatch.setenv("TZ", "America/New_York")
+        time.tzset()
+        try:
+            page = Page.from_markdown(
+                "notes/test",
+                {},
+                "Body",
+                render_html=False,
+                file_path=md_file,
+            )
+        finally:
+            if original_tz is None:
+                monkeypatch.delenv("TZ", raising=False)
+            else:
+                monkeypatch.setenv("TZ", original_tz)
+            time.tzset()
+
+        assert page.file_modified == "2024-03-15"
+        assert page.file_modified == page.modified_display
+
+    def test_missing_file_path_does_not_raise_and_skips_file_times(self, tmp_path):
+        missing_file = tmp_path / "missing.md"
+
+        page = Page.from_markdown(
+            "notes/test",
+            {},
+            "Body",
+            render_html=False,
+            file_path=missing_file,
+        )
+
+        assert page.file_mtime is None
+        assert page.file_modified is None
+        assert page.published_at is None
+        assert page.modified_at is None

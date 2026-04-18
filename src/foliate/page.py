@@ -14,6 +14,24 @@ from .markdown_utils import (
 type Frontmatter = dict[str, object]
 
 
+@dataclass(frozen=True)
+class SourceFileMetadata:
+    """Derived metadata from the source file on disk."""
+
+    file_modified: str | None = None
+    file_mtime: float | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedPageDates:
+    """Normalized publish/modify timestamps and display strings."""
+
+    published_at: datetime | None = None
+    modified_at: datetime | None = None
+    modified_display: str | None = None
+    updated_display: str | None = None
+
+
 def parse_frontmatter_date(value: object) -> datetime | None:
     """Parse supported frontmatter date values into UTC datetimes."""
     if value is None:
@@ -65,6 +83,11 @@ def _file_mtime_to_utc(file_mtime: float | None) -> datetime | None:
         return datetime.fromtimestamp(file_mtime, tz=timezone.utc)
     except (OSError, OverflowError, ValueError):
         return None
+
+
+def _format_date(value: datetime | None) -> str | None:
+    """Format a datetime for display using the normalized UTC date."""
+    return value.strftime("%Y-%m-%d") if value else None
 
 
 def _resolve_explicit_published_at(
@@ -132,19 +155,23 @@ def _resolve_image(meta: Frontmatter, markdown_content: str) -> str | None:
 
 def _resolve_file_metadata(
     file_path: Path | None,
-) -> tuple[str | None, float | None]:
+) -> SourceFileMetadata:
     """Read derived file metadata for a source path."""
     if file_path is None:
-        return None, None
+        return SourceFileMetadata()
 
-    file_mtime = file_path.stat().st_mtime
-    file_modified = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d")
-    return file_modified, file_mtime
+    try:
+        file_mtime = file_path.stat().st_mtime
+    except OSError:
+        return SourceFileMetadata()
+
+    file_modified = _format_date(_file_mtime_to_utc(file_mtime))
+    return SourceFileMetadata(file_modified=file_modified, file_mtime=file_mtime)
 
 
 def _resolve_page_dates(
     meta: Frontmatter, file_mtime: float | None
-) -> tuple[datetime | None, datetime | None, str | None, str | None]:
+) -> ResolvedPageDates:
     """Resolve published/modified timestamps and display values."""
     published = meta.get("published")
     date_value = meta.get("date")
@@ -154,14 +181,15 @@ def _resolve_page_dates(
     published_at = _resolve_explicit_published_at(
         published, date_value
     ) or _file_mtime_to_utc(file_mtime)
-    modified_at = (
-        explicit_modified_at or _file_mtime_to_utc(file_mtime) or published_at
+    modified_at = explicit_modified_at or _file_mtime_to_utc(file_mtime) or published_at
+    updated_display = _format_date(explicit_modified_at)
+    modified_display = _format_date(modified_at)
+    return ResolvedPageDates(
+        published_at=published_at,
+        modified_at=modified_at,
+        modified_display=modified_display,
+        updated_display=updated_display,
     )
-    updated_display = (
-        explicit_modified_at.strftime("%Y-%m-%d") if explicit_modified_at else None
-    )
-    modified_display = modified_at.strftime("%Y-%m-%d") if modified_at else None
-    return published_at, modified_at, modified_display, updated_display
 
 
 @dataclass
@@ -204,10 +232,8 @@ class Page:
         page_url = _build_page_url(page_path, base_url, slugify_urls)
         description = _resolve_description(meta, markdown_content)
         image = _resolve_image(meta, markdown_content)
-        file_modified, file_mtime = _resolve_file_metadata(file_path)
-        published_at, modified_at, modified_display, updated_display = (
-            _resolve_page_dates(meta, file_mtime)
-        )
+        file_metadata = _resolve_file_metadata(file_path)
+        page_dates = _resolve_page_dates(meta, file_metadata.file_mtime)
 
         return cls(
             path=page_path,
@@ -222,11 +248,11 @@ class Page:
             description=description,
             image=image,
             tags=_coerce_tags(meta.get("tags")),
-            file_modified=file_modified,
-            file_mtime=file_mtime,
+            file_modified=file_metadata.file_modified,
+            file_mtime=file_metadata.file_mtime,
             is_published=bool(published),
-            published_at=published_at,
-            modified_at=modified_at,
-            modified_display=modified_display,
-            updated=updated_display,
+            published_at=page_dates.published_at,
+            modified_at=page_dates.modified_at,
+            modified_display=page_dates.modified_display,
+            updated=page_dates.updated_display,
         )
