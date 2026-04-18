@@ -4,6 +4,8 @@ import os
 import time
 from datetime import date, datetime, timezone
 
+import pytest
+
 from foliate.page import Page, parse_frontmatter_date
 
 
@@ -301,6 +303,10 @@ class TestPageFromMarkdown:
         assert page.file_mtime is not None
         assert page.file_modified is not None
 
+    @pytest.mark.skipif(
+        not hasattr(time, "tzset"),
+        reason="time.tzset is POSIX-only; TZ env var has no effect on Windows",
+    )
     def test_file_modified_uses_same_utc_date_as_modified_display(
         self, tmp_path, monkeypatch
     ):
