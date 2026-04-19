@@ -77,6 +77,40 @@ def test_copy_directory_incremental_removes_unsupported_target_files():
         assert not (target_dir / "leftover.tmp").exists()
 
 
+def test_copy_directory_incremental_skips_matching_tree(monkeypatch, tmp_path):
+    src_dir = tmp_path / "src"
+    target_dir = tmp_path / "target"
+    src_dir.mkdir()
+    target_dir.mkdir()
+
+    _write(src_dir / "allowed.txt", "allowed")
+    _write(target_dir / "allowed.txt", "allowed")
+
+    copy_calls: list[tuple[Path, Path, set[str] | None]] = []
+    rmtree_calls: list[Path] = []
+
+    monkeypatch.setattr(
+        "foliate.assets._copy_directory",
+        lambda src, target, extensions=None: copy_calls.append(
+            (src, target, extensions)
+        ),
+    )
+    monkeypatch.setattr(
+        "foliate.assets.robust_rmtree",
+        lambda path: rmtree_calls.append(path),
+    )
+
+    copy_directory_incremental(
+        src_dir,
+        target_dir,
+        force_rebuild=False,
+        filter_extensions={".txt"},
+    )
+
+    assert copy_calls == []
+    assert rmtree_calls == []
+
+
 def test_copy_static_assets_preserves_bundled_defaults_with_user_static():
     with tempfile.TemporaryDirectory() as tmpdir:
         vault = Path(tmpdir)

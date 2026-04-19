@@ -2,6 +2,7 @@
 
 import shutil
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 # Supported asset file extensions
@@ -34,13 +35,13 @@ SUPPORTED_ASSET_EXTENSIONS = {
 }
 
 
-def _should_copy_file(path: Path, filter_extensions: set | None) -> bool:
+def _should_copy_file(path: Path, filter_extensions: set[str] | None) -> bool:
     """Return whether a file should be copied under the active filter."""
     return not filter_extensions or path.suffix.lower() in filter_extensions
 
 
 def _copy_directory(
-    src_dir: Path, target_dir: Path, filter_extensions: set | None = None
+    src_dir: Path, target_dir: Path, filter_extensions: set[str] | None = None
 ) -> None:
     """Copy a directory tree while honoring optional extension filtering."""
 
@@ -54,6 +55,71 @@ def _copy_directory(
         ]
 
     shutil.copytree(src_dir, target_dir, ignore=_ignore)
+
+
+def _iter_filtered_files(
+    root_dir: Path,
+    filter_extensions: set[str] | None = None,
+) -> Iterator[Path]:
+    """Yield regular files below a directory under the active filter."""
+    for path in root_dir.glob("**/*"):
+        if path.is_file() and _should_copy_file(path, filter_extensions):
+            yield path
+
+
+def _source_tree_needs_refresh(
+    src_dir: Path,
+    target_dir: Path,
+    filter_extensions: set[str] | None = None,
+) -> tuple[bool, set[Path]]:
+    """Return whether source changes require a refresh and the expected files."""
+    source_files: set[Path] = set()
+
+    for src_file in _iter_filtered_files(src_dir, filter_extensions):
+        rel_path = src_file.relative_to(src_dir)
+        source_files.add(rel_path)
+
+        target_file = target_dir / rel_path
+        if (
+            not target_file.exists()
+            or src_file.stat().st_mtime > target_file.stat().st_mtime
+        ):
+            return True, source_files
+
+    return False, source_files
+
+
+def _target_tree_needs_refresh(
+    target_dir: Path,
+    source_files: set[Path],
+    filter_extensions: set[str] | None = None,
+) -> bool:
+    """Return whether target-only or unsupported files require a refresh."""
+    for target_file in target_dir.glob("**/*"):
+        if not target_file.is_file():
+            continue
+        rel_path = target_file.relative_to(target_dir)
+        if not _should_copy_file(target_file, filter_extensions):
+            return True
+        if rel_path not in source_files:
+            return True
+    return False
+
+
+def _directory_copy_needs_refresh(
+    src_dir: Path,
+    target_dir: Path,
+    filter_extensions: set[str] | None = None,
+) -> bool:
+    """Return whether incremental copying should rebuild the target tree."""
+    source_needs_refresh, source_files = _source_tree_needs_refresh(
+        src_dir,
+        target_dir,
+        filter_extensions,
+    )
+    if source_needs_refresh:
+        return True
+    return _target_tree_needs_refresh(target_dir, source_files, filter_extensions)
 
 
 def robust_rmtree(path: Path, retries: int = 3, delay: float = 0.1) -> None:
@@ -73,7 +139,7 @@ def copy_directory_incremental(
     src_dir: Path,
     target_dir: Path,
     force_rebuild: bool,
-    filter_extensions: set | None = None,
+    filter_extensions: set[str] | None = None,
 ) -> None:
     """Copy a directory to build output with incremental update support.
 
@@ -89,39 +155,7 @@ def copy_directory_incremental(
         _copy_directory(src_dir, target_dir, filter_extensions)
         return
 
-    source_files: set[Path] = set()
-    needs_refresh = False
-
-    for src_file in src_dir.glob("**/*"):
-        if not src_file.is_file():
-            continue
-        if not _should_copy_file(src_file, filter_extensions):
-            continue
-
-        rel_path = src_file.relative_to(src_dir)
-        source_files.add(rel_path)
-
-        target_file = target_dir / rel_path
-        if (
-            not target_file.exists()
-            or src_file.stat().st_mtime > target_file.stat().st_mtime
-        ):
-            needs_refresh = True
-            break
-
-    if not needs_refresh:
-        for target_file in target_dir.glob("**/*"):
-            if not target_file.is_file():
-                continue
-            rel_path = target_file.relative_to(target_dir)
-            if not _should_copy_file(target_file, filter_extensions):
-                needs_refresh = True
-                break
-            if rel_path not in source_files:
-                needs_refresh = True
-                break
-
-    if needs_refresh:
+    if _directory_copy_needs_refresh(src_dir, target_dir, filter_extensions):
         robust_rmtree(target_dir)
         _copy_directory(src_dir, target_dir, filter_extensions)
 
