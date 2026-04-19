@@ -107,3 +107,19 @@ def test_copy_static_assets_removes_deleted_user_override():
 
         assert not (build_dir / "static" / "custom.css").exists()
         assert (build_dir / "static" / "main.css").exists()
+
+
+def test_copy_static_assets_ignores_non_directory_user_static_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        vault = Path(tmpdir)
+        foliate_dir = vault / ".foliate"
+        build_dir = foliate_dir / "build"
+
+        foliate_dir.mkdir()
+        (foliate_dir / "static").write_text("not a directory", encoding="utf-8")
+
+        copy_static_assets(vault, build_dir, force_rebuild=False)
+
+        static_dir = build_dir / "static"
+        assert static_dir.is_dir()
+        assert (static_dir / "main.css").exists()

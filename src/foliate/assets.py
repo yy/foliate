@@ -145,7 +145,7 @@ def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -
 
     # Override with user static files if present
     user_static = vault_path / ".foliate" / "static"
-    if user_static.exists():
+    if user_static.is_dir():
         shutil.copytree(user_static, bundled_static, dirs_exist_ok=True)
 
 
