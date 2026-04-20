@@ -192,7 +192,7 @@ def copy_user_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> 
         force_rebuild: If True, always copy everything
     """
     assets_src = vault_path / "assets"
-    if assets_src.exists():
+    if assets_src.is_dir():
         copy_directory_incremental(
             assets_src,
             build_dir / "assets",

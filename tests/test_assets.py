@@ -3,7 +3,11 @@
 import tempfile
 from pathlib import Path
 
-from foliate.assets import copy_directory_incremental, copy_static_assets
+from foliate.assets import (
+    copy_directory_incremental,
+    copy_static_assets,
+    copy_user_assets,
+)
 
 
 def _write(path: Path, content: str) -> None:
@@ -157,3 +161,16 @@ def test_copy_static_assets_ignores_non_directory_user_static_path():
         static_dir = build_dir / "static"
         assert static_dir.is_dir()
         assert (static_dir / "main.css").exists()
+
+
+def test_copy_user_assets_ignores_non_directory_assets_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        vault = Path(tmpdir)
+        build_dir = vault / ".foliate" / "build"
+        build_dir.mkdir(parents=True)
+
+        (vault / "assets").write_text("not a directory", encoding="utf-8")
+
+        copy_user_assets(vault, build_dir, force_rebuild=False)
+
+        assert not (build_dir / "assets").exists()
