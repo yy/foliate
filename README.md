@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="foliate-logo.png" alt="Foliate" width="400">
+  <img src="foliate-logo-v2.png" alt="Foliate" width="400">
 </p>
 <p align="center">
   A static site generator for your markdown vault. A flexible, configurable alternative to Obsidian Publish.
