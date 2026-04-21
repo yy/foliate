@@ -178,6 +178,23 @@ class TestFoliateEventHandler:
 
         assert "/vault/notes/page.md" in handler.pending_changes
 
+    def test_tracks_markdown_file_moved_into_ignored_folder(self, handler):
+        """Moving a tracked file into an ignored folder should rebuild removal."""
+        event = FileMovedEvent("/vault/notes/page.md", "/vault/_private/page.md")
+
+        handler.on_any_event(event)
+
+        assert "/vault/notes/page.md" in handler.pending_changes
+
+    def test_tracks_moved_markdown_file_using_destination_path(self, handler):
+        """Moves between tracked paths should queue the destination path."""
+        event = FileMovedEvent("/vault/notes/page.md", "/vault/archive/page.md")
+
+        handler.on_any_event(event)
+
+        assert "/vault/archive/page.md" in handler.pending_changes
+        assert "/vault/notes/page.md" not in handler.pending_changes
+
     def test_tracks_file_renamed_into_markdown_extension(self, handler):
         """Renaming an untracked file into .md should rebuild."""
         event = FileMovedEvent("/vault/notes/page.tmp", "/vault/notes/page.md")

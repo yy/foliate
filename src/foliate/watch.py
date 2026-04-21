@@ -61,27 +61,23 @@ class FoliateEventHandler(FileSystemEventHandler):
     def _should_track_path(self, src_path: str) -> bool:
         return Path(src_path).suffix.lower() in self.relevant_extensions
 
+    def _is_relevant_path(self, path: str) -> bool:
+        normalized_path = self._normalize_path(path)
+        return not self._should_ignore_path(
+            normalized_path
+        ) and self._should_track_path(path)
+
     def _iter_event_paths(self, event) -> list[str]:
         """Return the path(s) that should trigger a rebuild for an event."""
         src_path = event.src_path
         dest_path = getattr(event, "dest_path", "")
 
         if not dest_path:
-            return [src_path]
+            return [src_path] if self._is_relevant_path(src_path) else []
 
-        normalized_src = self._normalize_path(src_path)
-        normalized_dest = self._normalize_path(dest_path)
-
-        src_is_relevant = not self._should_ignore_path(
-            normalized_src
-        ) and self._should_track_path(src_path)
-        dest_is_relevant = not self._should_ignore_path(
-            normalized_dest
-        ) and self._should_track_path(dest_path)
-
-        if dest_is_relevant:
+        if self._is_relevant_path(dest_path):
             return [dest_path]
-        if src_is_relevant:
+        if self._is_relevant_path(src_path):
             return [src_path]
         return []
 
@@ -127,14 +123,6 @@ class FoliateEventHandler(FileSystemEventHandler):
             return
 
         for event_path in self._iter_event_paths(event):
-            normalized_path = self._normalize_path(event_path)
-
-            if self._should_ignore_path(normalized_path):
-                continue
-
-            if not self._should_track_path(event_path):
-                continue
-
             self._queue_change(event_path)
 
     def process_changes(self):
