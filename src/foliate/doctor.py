@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 from .config import Config
 from .templates import get_template_path, list_available_templates
@@ -18,6 +17,22 @@ def _display_path(path: Path, base: Path) -> str:
         return str(path.relative_to(base))
     except ValueError:
         return str(path)
+
+
+def _check_optional_directory(
+    path: Path,
+    *,
+    base: Path,
+    label: str,
+    missing_message: str,
+) -> tuple[list[str], list[str]]:
+    """Return warning/ok messages for an optional directory path."""
+    display_path = _display_path(path, base)
+    if path.is_dir():
+        return [], [f"{label} directory: {display_path}"]
+    if path.exists():
+        return [f"{label} path is not a directory: {display_path}"], []
+    return [], [missing_message]
 
 
 def run_doctor(
@@ -70,27 +85,23 @@ def run_doctor(
             ok.append("Feed template found: feed.xml")
 
     user_templates = vault_path / ".foliate" / "templates"
-    if user_templates.is_dir():
-        ok.append(
-            f"User templates directory: {_display_path(user_templates, start_path)}"
-        )
-    elif user_templates.exists():
-        warnings.append(
-            f"User templates path is not a directory: "
-            f"{_display_path(user_templates, start_path)}"
-        )
-    else:
-        ok.append("User templates directory not found (using bundled defaults).")
+    template_warnings, template_ok = _check_optional_directory(
+        user_templates,
+        base=start_path,
+        label="User templates",
+        missing_message="User templates directory not found (using bundled defaults).",
+    )
+    warnings.extend(template_warnings)
+    ok.extend(template_ok)
 
     user_static = vault_path / ".foliate" / "static"
-    if user_static.is_dir():
-        ok.append(f"User static directory: {_display_path(user_static, start_path)}")
-    elif user_static.exists():
-        warnings.append(
-            f"User static path is not a directory: "
-            f"{_display_path(user_static, start_path)}"
-        )
-    else:
-        ok.append("User static directory not found (using bundled defaults).")
+    static_warnings, static_ok = _check_optional_directory(
+        user_static,
+        base=start_path,
+        label="User static",
+        missing_message="User static directory not found (using bundled defaults).",
+    )
+    warnings.extend(static_warnings)
+    ok.extend(static_ok)
 
     return errors, warnings, ok

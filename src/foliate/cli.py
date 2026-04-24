@@ -27,6 +27,24 @@ items = [
 """
 
 
+def _validate_init_paths(
+    foliate_dir: Path,
+    config_file: Path,
+    templates_dir: Path,
+    static_dir: Path,
+) -> str | None:
+    """Return an init-path conflict message when scaffolding would fail."""
+    if foliate_dir.exists() and not foliate_dir.is_dir():
+        return ".foliate already exists and is not a directory"
+    if config_file.exists() and config_file.is_dir():
+        return ".foliate/config.toml already exists and is not a file"
+    if templates_dir.exists() and not templates_dir.is_dir():
+        return ".foliate/templates already exists and is not a directory"
+    if static_dir.exists() and not static_dir.is_dir():
+        return ".foliate/static already exists and is not a directory"
+    return None
+
+
 def get_default_config_content() -> str:
     """Get the default config.toml content from bundled defaults."""
     content = read_package_text("foliate.defaults", "config.toml")
@@ -58,6 +76,16 @@ def init(force: bool):
     config_file = foliate_dir / "config.toml"
     templates_dir = foliate_dir / "templates"
     static_dir = foliate_dir / "static"
+
+    conflict = _validate_init_paths(
+        foliate_dir,
+        config_file,
+        templates_dir,
+        static_dir,
+    )
+    if conflict:
+        click.echo(f"Error: {conflict}", err=True)
+        raise SystemExit(1)
 
     if config_file.exists() and not force:
         click.echo("Error: .foliate/config.toml already exists", err=True)

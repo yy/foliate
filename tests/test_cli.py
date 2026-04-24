@@ -83,6 +83,29 @@ class TestInitCommand:
             config_content = Path(".foliate/config.toml").read_text()
             assert "Existing" not in config_content
 
+    def test_fails_cleanly_when_templates_or_static_path_is_a_file(self):
+        """Should reject conflicting scaffold paths before writing anything."""
+        runner = CliRunner()
+
+        for conflicting_path in (".foliate/templates", ".foliate/static"):
+            with runner.isolated_filesystem():
+                Path(".foliate").mkdir()
+                Path(conflicting_path).write_text("not a directory", encoding="utf-8")
+                other_path = (
+                    ".foliate/static"
+                    if conflicting_path == ".foliate/templates"
+                    else ".foliate/templates"
+                )
+
+                result = runner.invoke(main, ["init"])
+
+                assert result.exit_code == 1
+                assert "is not a directory" in result.output
+                assert not Path(".foliate/config.toml").exists()
+                assert not Path(".foliate/templates").is_dir()
+                assert Path(conflicting_path).is_file()
+                assert not Path(other_path).exists()
+
     def test_shows_next_steps(self):
         """Should show customization hints after init."""
         runner = CliRunner()
@@ -638,7 +661,7 @@ class TestWatchCommand:
         with runner.isolated_filesystem():
             runner.invoke(main, ["init"])
 
-            result = runner.invoke(main, ["watch"])
+            runner.invoke(main, ["watch"])
 
             assert mock_watch.called
 
@@ -649,7 +672,7 @@ class TestWatchCommand:
         with runner.isolated_filesystem():
             runner.invoke(main, ["init"])
 
-            result = runner.invoke(main, ["watch", "--port", "9000"])
+            runner.invoke(main, ["watch", "--port", "9000"])
 
             mock_watch.assert_called()
             call_kwargs = mock_watch.call_args[1]
