@@ -14,7 +14,7 @@ _REQUIRED_TEMPLATES = ("layout.html", "page.html", "index.html")
 def _display_path(path: Path, base: Path) -> str:
     """Return a friendly path display, relative when possible."""
     try:
-        return str(path.relative_to(base))
+        return path.relative_to(base).as_posix()
     except ValueError:
         return str(path)
 
