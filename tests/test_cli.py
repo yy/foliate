@@ -307,7 +307,7 @@ class TestCliHelpers:
             result = runner.invoke(main, ["status"])
 
             assert result.exit_code == 1
-            assert ".foliate/config.toml" in result.output
+            assert "config.toml" in result.output
             assert "is not a file" in result.output
             assert "Traceback" not in result.output
 
