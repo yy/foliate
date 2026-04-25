@@ -123,10 +123,15 @@ def _directory_copy_needs_refresh(
 
 
 def robust_rmtree(path: Path, retries: int = 3, delay: float = 0.1) -> None:
-    """Remove a directory tree with retry logic for macOS file descriptor races."""
+    """Remove a directory tree or conflicting file with retry logic."""
     for attempt in range(retries):
         try:
-            shutil.rmtree(path)
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+            else:
+                shutil.rmtree(path)
+            return
+        except FileNotFoundError:
             return
         except OSError:
             if attempt < retries - 1:

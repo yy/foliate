@@ -1,6 +1,7 @@
 """Command-line interface for foliate."""
 
 from pathlib import Path
+from typing import NoReturn
 
 import click
 
@@ -43,6 +44,21 @@ def _validate_init_paths(
     if static_dir.exists() and not static_dir.is_dir():
         return ".foliate/static already exists and is not a directory"
     return None
+
+
+def _exit_with_error(message: str, *, leading_newline: bool = False) -> NoReturn:
+    """Print a CLI error message and exit with status 1."""
+    prefix = "\n" if leading_newline else ""
+    click.echo(f"{prefix}Error: {message}", err=True)
+    raise SystemExit(1)
+
+
+def _load_config_or_exit() -> Config:
+    """Load the project config or exit cleanly when it is missing."""
+    try:
+        return Config.find_and_load()
+    except FileNotFoundError as e:
+        _exit_with_error(str(e))
 
 
 def get_default_config_content() -> str:
@@ -135,18 +151,13 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
     # Initialize logging based on verbosity
     setup_logging(verbose=verbose)
 
-    try:
-        config = Config.find_and_load()
-    except FileNotFoundError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    config = _load_config_or_exit()
 
     if dry_run:
         from .status import format_build_dry_run_report, scan_status
 
         if serve:
-            click.echo("Error: --serve cannot be used with --dry-run", err=True)
-            raise SystemExit(1)
+            _exit_with_error("--serve cannot be used with --dry-run")
 
         report = scan_status(config)
         click.echo(
@@ -160,8 +171,7 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
     )
 
     if result == 0:
-        click.echo("No public pages found to build", err=True)
-        raise SystemExit(1)
+        _exit_with_error("No public pages found to build")
 
     if serve:
         from .resources import start_dev_server
@@ -172,8 +182,7 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
             click.echo("Press Ctrl+C to stop")
             start_dev_server(build_dir, port, background=False)
         except OSError as e:
-            click.echo(f"\nError: {e}", err=True)
-            raise SystemExit(1)
+            _exit_with_error(str(e), leading_newline=True)
         except KeyboardInterrupt:
             click.echo("\nServer stopped")
 
@@ -185,12 +194,7 @@ def watch(port: int, verbose: bool):
     """Watch for changes and rebuild automatically."""
     from .watch import watch as do_watch
 
-    try:
-        config = Config.find_and_load()
-    except FileNotFoundError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
+    config = _load_config_or_exit()
     do_watch(config=config, port=port, verbose=verbose)
 
 
@@ -250,12 +254,7 @@ def status(verbose: bool):
 
     setup_logging(verbose=False)
 
-    try:
-        config = Config.find_and_load()
-    except FileNotFoundError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
-
+    config = _load_config_or_exit()
     report = scan_status(config)
     output = format_status_report(report, verbose=verbose)
     click.echo(output)
@@ -272,11 +271,7 @@ def deploy(dry_run: bool, message: str, build: bool, verbose: bool):
     """Deploy built site to configured target."""
     from .deploy import deploy_github_pages
 
-    try:
-        config = Config.find_and_load()
-    except FileNotFoundError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    config = _load_config_or_exit()
 
     if config.resolve_deploy_target() is None:
         click.echo("Error: No deploy target configured", err=True)

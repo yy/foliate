@@ -4,9 +4,10 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
-from foliate.cli import main
+from foliate.cli import _exit_with_error, _load_config_or_exit, main
 
 
 class TestInitCommand:
@@ -263,6 +264,58 @@ quarto_enabled = true
 
             assert result.exit_code == 1
             assert "--serve cannot be used with --dry-run" in result.output
+
+
+class TestCliHelpers:
+    """Tests for shared CLI helper behavior."""
+
+    @patch("foliate.cli.click.echo")
+    def test_exit_with_error_can_preserve_leading_blank_line(self, mock_echo):
+        """Should support the existing blank-line error formatting when needed."""
+        with pytest.raises(SystemExit) as exc_info:
+            _exit_with_error("port in use", leading_newline=True)
+
+        assert exc_info.value.code == 1
+        mock_echo.assert_called_once_with("\nError: port in use", err=True)
+
+    @patch("foliate.cli.click.echo")
+    @patch("foliate.cli.Config.find_and_load")
+    def test_load_config_or_exit_reports_missing_config_cleanly(
+        self, mock_find_and_load, mock_echo
+    ):
+        """Should convert missing config errors into Click-friendly exits."""
+        mock_find_and_load.side_effect = FileNotFoundError(
+            "No .foliate/config.toml found. Run 'foliate init' first."
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            _load_config_or_exit()
+
+        assert exc_info.value.code == 1
+        mock_echo.assert_called_once_with(
+            "Error: No .foliate/config.toml found. Run 'foliate init' first.",
+            err=True,
+        )
+
+    @patch("foliate.cli.Config.find_and_load")
+    def test_config_commands_share_missing_config_error_handling(
+        self, mock_find_and_load
+    ):
+        """Should keep config-dependent commands on the same error path."""
+        mock_find_and_load.side_effect = FileNotFoundError(
+            "No .foliate/config.toml found. Run 'foliate init' first."
+        )
+
+        runner = CliRunner()
+
+        for command in (["build"], ["watch"], ["status"], ["deploy"]):
+            result = runner.invoke(main, command)
+
+            assert result.exit_code == 1
+            assert (
+                "Error: No .foliate/config.toml found. Run 'foliate init' first."
+                in result.output
+            )
 
 
 class TestCleanCommand:
