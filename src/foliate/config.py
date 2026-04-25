@@ -346,6 +346,8 @@ class Config:
 
         if not config_path.exists():
             return config
+        if not config_path.is_file():
+            raise IsADirectoryError(f"{config_path} is not a file")
 
         with config_path.open("rb") as f:
             data: dict[str, object] = tomllib.load(f)

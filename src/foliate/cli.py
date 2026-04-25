@@ -54,10 +54,10 @@ def _exit_with_error(message: str, *, leading_newline: bool = False) -> NoReturn
 
 
 def _load_config_or_exit() -> Config:
-    """Load the project config or exit cleanly when it is missing."""
+    """Load the project config or exit cleanly when it cannot be opened."""
     try:
         return Config.find_and_load()
-    except FileNotFoundError as e:
+    except (FileNotFoundError, IsADirectoryError) as e:
         _exit_with_error(str(e))
 
 

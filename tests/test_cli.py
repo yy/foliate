@@ -297,6 +297,20 @@ class TestCliHelpers:
             err=True,
         )
 
+    def test_status_fails_cleanly_when_config_path_is_directory(self):
+        """Should report a bad config path without a Python traceback."""
+        runner = CliRunner()
+
+        with runner.isolated_filesystem():
+            Path(".foliate/config.toml").mkdir(parents=True)
+
+            result = runner.invoke(main, ["status"])
+
+            assert result.exit_code == 1
+            assert ".foliate/config.toml" in result.output
+            assert "is not a file" in result.output
+            assert "Traceback" not in result.output
+
     @patch("foliate.cli.Config.find_and_load")
     def test_config_commands_share_missing_config_error_handling(
         self, mock_find_and_load
