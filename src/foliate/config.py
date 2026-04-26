@@ -461,17 +461,19 @@ class Config:
                 return None
             current = parent
 
+    def get_foliate_dir(self) -> Path:
+        """Get the project's .foliate directory."""
+        if self.vault_path:
+            return self.vault_path / ".foliate"
+        return Path.cwd() / ".foliate"
+
     def get_build_dir(self) -> Path:
         """Get the build output directory."""
-        if self.vault_path:
-            return self.vault_path / ".foliate" / "build"
-        return Path.cwd() / ".foliate" / "build"
+        return self.get_foliate_dir() / "build"
 
     def get_cache_dir(self) -> Path:
         """Get the cache directory."""
-        if self.vault_path:
-            return self.vault_path / ".foliate" / "cache"
-        return Path.cwd() / ".foliate" / "cache"
+        return self.get_foliate_dir() / "cache"
 
     def resolve_deploy_target(self) -> Path | None:
         """Resolve the configured deploy target path."""
@@ -487,7 +489,7 @@ class Config:
     def get_templates_dir(self) -> Path | None:
         """Get custom templates directory if it exists."""
         if self.vault_path:
-            templates_dir = self.vault_path / ".foliate" / "templates"
+            templates_dir = self.get_foliate_dir() / "templates"
             if templates_dir.exists():
                 return templates_dir
         return None
@@ -495,7 +497,7 @@ class Config:
     def get_static_dir(self) -> Path | None:
         """Get custom static directory if it exists."""
         if self.vault_path:
-            static_dir = self.vault_path / ".foliate" / "static"
+            static_dir = self.get_foliate_dir() / "static"
             if static_dir.exists():
                 return static_dir
         return None

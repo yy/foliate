@@ -160,6 +160,50 @@ class TestBuildCommand:
             assert result.exit_code == 1
             assert "No public pages" in result.output
 
+    def test_build_replaces_conflicting_build_artifact_file(self):
+        """Build should replace a stale file at the generated build path."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            runner.invoke(main, ["init"])
+            Path(".foliate/config.toml").write_text(
+                """\
+[site]
+name = "Test Site"
+url = "https://example.com"
+
+[build]
+home_redirect = "test"
+incremental = false
+""",
+                encoding="utf-8",
+            )
+            Path(".foliate/build").write_text("not a directory", encoding="utf-8")
+            Path("test.md").write_text(
+                "---\npublic: true\n---\n# Test", encoding="utf-8"
+            )
+
+            result = runner.invoke(main, ["build"])
+
+            assert result.exit_code == 0
+            assert "Traceback" not in result.output
+            assert Path(".foliate/build").is_dir()
+
+    def test_build_replaces_conflicting_cache_artifact_file(self):
+        """Build should replace a stale file at the generated cache path."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            runner.invoke(main, ["init"])
+            Path(".foliate/cache").write_text("not a directory", encoding="utf-8")
+            Path("test.md").write_text(
+                "---\npublic: true\n---\n# Test", encoding="utf-8"
+            )
+
+            result = runner.invoke(main, ["build"])
+
+            assert result.exit_code == 0
+            assert "Traceback" not in result.output
+            assert Path(".foliate/cache").is_dir()
+
     def test_force_flag(self):
         """Should accept --force flag for full rebuild."""
         runner = CliRunner()

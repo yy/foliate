@@ -81,6 +81,18 @@ ignored_folders = ["_private", "drafts"]
         config = Config.load(config_path)
 
         assert config.vault_path == tmp_path
+        assert config.get_foliate_dir() == tmp_path / ".foliate"
+        assert config.get_build_dir() == tmp_path / ".foliate" / "build"
+        assert config.get_cache_dir() == tmp_path / ".foliate" / "cache"
+
+    def test_config_paths_without_vault_use_current_directory(
+        self, tmp_path, monkeypatch
+    ):
+        """Fallback paths are rooted in the current directory."""
+        monkeypatch.chdir(tmp_path)
+        config = Config()
+
+        assert config.get_foliate_dir() == tmp_path / ".foliate"
         assert config.get_build_dir() == tmp_path / ".foliate" / "build"
         assert config.get_cache_dir() == tmp_path / ".foliate" / "cache"
 

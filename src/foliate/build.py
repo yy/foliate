@@ -931,12 +931,19 @@ def _setup_build_environment(
         debug("Force rebuild: Cleaning build directory...")
         robust_rmtree(build_dir)
 
-    build_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_artifact_dir(build_dir)
 
     # Setup Jinja2 environment with template loader
     env = Environment(loader=get_template_loader(vault_path))
 
     return build_dir, cache_file, build_cache, env, force_rebuild
+
+
+def _prepare_artifact_dir(path: Path) -> None:
+    """Ensure an internal build artifact path is available as a directory."""
+    if path.exists() and not path.is_dir():
+        robust_rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
 
 
 def _print_build_summary(
@@ -1099,7 +1106,7 @@ def build(
             cache_to_save.update(new_build_cache)
 
         update_global_deps_cache(cache_to_save, config.config_path, vault_path)
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        _prepare_artifact_dir(cache_file.parent)
         save_build_cache(cache_file, cache_to_save)
 
     # Print summary
