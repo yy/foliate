@@ -646,6 +646,7 @@ class TestFormatStatusReport:
         report = StatusReport(pages=pages)
         output = format_status_report(report)
         assert "[published]" in output
+        assert "  + blog [published]" in output
 
     def test_summary_counts_only_public_published_pages(self):
         """Summary should ignore private pages even if published=true."""
@@ -754,6 +755,19 @@ class TestFormatBuildDryRunReport:
         assert "1 published" in output
         assert "2 would build" in output
         assert "1 private" in output
+
+    def test_published_marker_keeps_dry_run_state_order(self):
+        """Dry-run build rows keep the state before the published marker."""
+        from foliate.status import format_build_dry_run_report
+
+        pages = [
+            PageStatus("blog", None, "/wiki/", False, True, True, "new"),
+        ]
+        report = StatusReport(pages=pages)
+
+        output = format_build_dry_run_report(report)
+
+        assert "  + blog (new) [published]" in output
 
     def test_dry_run_header(self):
         """Output starts with dry run notice."""

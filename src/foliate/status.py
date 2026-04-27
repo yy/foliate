@@ -5,6 +5,7 @@ and whether they are new, modified, or unchanged since the last build.
 """
 
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -215,6 +216,28 @@ def scan_status(config: Config) -> StatusReport:
     )
 
 
+def _published_marker(page: PageStatus) -> str:
+    """Return the display marker for published pages."""
+    return " [published]" if page.published else ""
+
+
+def _format_page_label(page: PageStatus) -> str:
+    """Format a page path with shared status-report markers."""
+    return f"{page.page_path}{_published_marker(page)}"
+
+
+def _append_page_lines(
+    lines: list[str],
+    pages: list[PageStatus],
+    *,
+    prefix: str,
+    formatter: Callable[[PageStatus], str] = _format_page_label,
+) -> None:
+    """Append consistently formatted page lines to a report."""
+    for page in pages:
+        lines.append(f"{prefix}{formatter(page)}")
+
+
 def format_status_report(report: StatusReport, verbose: bool = False) -> str:
     """Format a status report for display.
 
@@ -238,16 +261,12 @@ def format_status_report(report: StatusReport, verbose: bool = False) -> str:
 
     if new:
         lines.append(f"New pages ({len(new)}):")
-        for p in new:
-            pub = " [published]" if p.published else ""
-            lines.append(f"  + {p.page_path}{pub}")
+        _append_page_lines(lines, new, prefix="  + ")
         lines.append("")
 
     if modified:
         lines.append(f"Modified pages ({len(modified)}):")
-        for p in modified:
-            pub = " [published]" if p.published else ""
-            lines.append(f"  ~ {p.page_path}{pub}")
+        _append_page_lines(lines, modified, prefix="  ~ ")
         lines.append("")
 
     if not new and not modified:
@@ -256,9 +275,7 @@ def format_status_report(report: StatusReport, verbose: bool = False) -> str:
 
     if verbose and unchanged:
         lines.append(f"Unchanged pages ({len(unchanged)}):")
-        for p in unchanged:
-            pub = " [published]" if p.published else ""
-            lines.append(f"    {p.page_path}{pub}")
+        _append_page_lines(lines, unchanged, prefix="    ")
         lines.append("")
 
     # Summary line
@@ -287,26 +304,25 @@ def format_build_dry_run_report(
     else:
         build_candidates = report.new_pages + report.modified_pages
 
+    def _format_build_candidate(page: PageStatus) -> str:
+        state = "forced" if force_rebuild else page.state
+        return f"{page.page_path} ({state}){_published_marker(page)}"
+
     lines.append(f"Would build ({len(build_candidates)}):")
-    for p in build_candidates:
-        pub = " [published]" if p.published else ""
-        state = "forced" if force_rebuild else p.state
-        lines.append(f"  + {p.page_path} ({state}){pub}")
+    _append_page_lines(
+        lines, build_candidates, prefix="  + ", formatter=_format_build_candidate
+    )
 
     if verbose and not force_rebuild and report.unchanged_pages:
         lines.append("")
         lines.append(f"Cached/unchanged ({len(report.unchanged_pages)}):")
-        for p in report.unchanged_pages:
-            pub = " [published]" if p.published else ""
-            lines.append(f"    {p.page_path}{pub}")
+        _append_page_lines(lines, report.unchanged_pages, prefix="    ")
 
     if report.private_pages:
         lines.append("")
         lines.append(f"Private pages ({len(report.private_pages)}, skipped)")
         if verbose:
-            for p in report.private_pages:
-                pub = " [published]" if p.published else ""
-                lines.append(f"  - {p.page_path}{pub}")
+            _append_page_lines(lines, report.private_pages, prefix="  - ")
 
     lines.append("")
     lines.append(
