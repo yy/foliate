@@ -486,6 +486,24 @@ items = "bad"
         with pytest.raises(TypeError, match=r"\[nav\]\.items.*must be a list"):
             Config.load(config_path)
 
+    def test_load_raises_on_invalid_build_wiki_prefix_type(self, tmp_path):
+        """The wiki prefix must be a string because it is used in URL paths."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[build]
+wiki_prefix = 123
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=r"\[build\]\.wiki_prefix.*string"):
+            Config.load(config_path)
+
     def test_load_raises_on_missing_nav_item_url(self, tmp_path):
         """Nav items still require url and label keys."""
         import pytest

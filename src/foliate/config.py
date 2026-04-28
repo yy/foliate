@@ -162,6 +162,22 @@ def _require_section_dict(
     return section_data
 
 
+def _require_string_value(
+    *, section: str, field_name: str, config_path: Path
+) -> Callable[[object], object]:
+    """Return a transform that validates a config value is a string."""
+
+    def _validate(value: object) -> object:
+        if not isinstance(value, str):
+            raise TypeError(
+                f"Config section [{section}].{field_name} in {config_path} "
+                f"must be a string, got {type(value).__name__}"
+            )
+        return value
+
+    return _validate
+
+
 def _default_nav_items(
     wiki_base_url: str = "/wiki/",
     home_page: str = "Home",
@@ -377,7 +393,18 @@ class Config:
             data, "site", SiteConfig, config.site, config_path
         )
         config.build = _load_optional_dataclass_section(
-            data, "build", BuildConfig, config.build, config_path
+            data,
+            "build",
+            BuildConfig,
+            config.build,
+            config_path,
+            transforms={
+                "wiki_prefix": _require_string_value(
+                    section="build",
+                    field_name="wiki_prefix",
+                    config_path=config_path,
+                ),
+            },
         )
         config.footer = _load_optional_dataclass_section(
             data, "footer", FooterConfig, config.footer, config_path

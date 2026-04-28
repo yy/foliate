@@ -57,7 +57,7 @@ def _load_config_or_exit() -> Config:
     """Load the project config or exit cleanly when it cannot be opened."""
     try:
         return Config.find_and_load()
-    except (FileNotFoundError, IsADirectoryError) as e:
+    except (FileNotFoundError, IsADirectoryError, TypeError, KeyError, ValueError) as e:
         _exit_with_error(str(e))
 
 

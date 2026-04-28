@@ -355,6 +355,25 @@ class TestCliHelpers:
             assert "is not a file" in result.output
             assert "Traceback" not in result.output
 
+    def test_status_reports_invalid_config_value_cleanly(self):
+        """Should report invalid config value types without a Python traceback."""
+        runner = CliRunner()
+
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text(
+                "[build]\nwiki_prefix = 123\n", encoding="utf-8"
+            )
+
+            result = runner.invoke(main, ["status"])
+
+            assert result.exit_code == 1
+            assert "Error:" in result.output
+            assert "[build].wiki_prefix" in result.output
+            assert "must be a string" in result.output
+            assert "Traceback" not in result.output
+
     @patch("foliate.cli.Config.find_and_load")
     def test_config_commands_share_missing_config_error_handling(
         self, mock_find_and_load
