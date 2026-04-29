@@ -6,7 +6,11 @@ import tomllib
 from pathlib import Path
 
 from .config import Config
-from .templates import get_template_path, list_available_templates
+from .templates import (
+    get_template_path,
+    get_user_templates_dir,
+    list_available_templates,
+)
 
 _REQUIRED_TEMPLATES = ("layout.html", "page.html", "index.html")
 
@@ -84,7 +88,7 @@ def run_doctor(
         else:
             ok.append("Feed template found: feed.xml")
 
-    user_templates = vault_path / ".foliate" / "templates"
+    user_templates = get_user_templates_dir(vault_path)
     template_warnings, template_ok = _check_optional_directory(
         user_templates,
         base=start_path,

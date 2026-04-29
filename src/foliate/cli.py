@@ -8,6 +8,7 @@ import click
 from .assets import robust_rmtree
 from .config import Config
 from .resources import copy_package_files, read_package_text
+from .templates import DEFAULT_TEMPLATES_PACKAGE
 
 # Inline fallback config in case package resources aren't available
 _FALLBACK_CONFIG = """\
@@ -69,7 +70,7 @@ def get_default_config_content() -> str:
 
 def copy_default_templates(target_dir: Path, force: bool = False) -> list[str]:
     """Copy default templates to target directory."""
-    return copy_package_files("foliate.defaults.templates", target_dir, force=force)
+    return copy_package_files(DEFAULT_TEMPLATES_PACKAGE, target_dir, force=force)
 
 
 def copy_default_static(target_dir: Path, force: bool = False) -> list[str]:

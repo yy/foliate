@@ -11,6 +11,7 @@ from watchdog.observers import Observer
 from .assets import SUPPORTED_ASSET_EXTENSIONS
 from .build import build as do_build
 from .config import Config
+from .templates import get_user_templates_dir
 
 
 class FoliateEventHandler(FileSystemEventHandler):
@@ -225,7 +226,7 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     observer.schedule(handler, str(vault_path), recursive=True)
 
     # Also watch .foliate/templates and .foliate/static if they exist
-    templates_dir = vault_path / ".foliate" / "templates"
+    templates_dir = get_user_templates_dir(vault_path)
     static_dir = vault_path / ".foliate" / "static"
 
     if templates_dir.exists():

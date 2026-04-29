@@ -7,6 +7,8 @@ from jinja2 import BaseLoader, ChoiceLoader, FileSystemLoader, TemplateNotFound
 
 from .resources import iter_package_files, read_package_text
 
+DEFAULT_TEMPLATES_PACKAGE = "foliate.defaults.templates"
+
 
 class PackageLoader(BaseLoader):
     """Jinja2 loader that loads templates from a Python package."""
@@ -23,6 +25,11 @@ class PackageLoader(BaseLoader):
 
     def list_templates(self) -> list[str]:
         return [name for name, _ in iter_package_files(self.package, suffix=".html")]
+
+
+def get_user_templates_dir(vault_path: Path) -> Path:
+    """Return the conventional user template override directory."""
+    return vault_path / ".foliate" / "templates"
 
 
 def get_template_loader(vault_path: Path | None) -> ChoiceLoader:
@@ -42,12 +49,12 @@ def get_template_loader(vault_path: Path | None) -> ChoiceLoader:
 
     # Check for user template overrides
     if vault_path is not None:
-        user_templates = vault_path / ".foliate" / "templates"
+        user_templates = get_user_templates_dir(vault_path)
         if user_templates.exists():
             loaders.append(FileSystemLoader(str(user_templates)))
 
     # Add bundled default templates
-    loaders.append(PackageLoader("foliate.defaults.templates"))
+    loaders.append(PackageLoader(DEFAULT_TEMPLATES_PACKAGE))
 
     return ChoiceLoader(loaders)
 
@@ -67,12 +74,12 @@ def get_template_path(name: str, vault_path: Path) -> Path | None:
     from .resources import get_package_file_path
 
     # Check user templates first
-    user_template = vault_path / ".foliate" / "templates" / name
+    user_template = get_user_templates_dir(vault_path) / name
     if user_template.exists():
         return user_template
 
     # Check bundled templates
-    return get_package_file_path("foliate.defaults.templates", name)
+    return get_package_file_path(DEFAULT_TEMPLATES_PACKAGE, name)
 
 
 def list_available_templates(vault_path: Path) -> dict[str, str]:
@@ -87,11 +94,11 @@ def list_available_templates(vault_path: Path) -> dict[str, str]:
     templates = {}
 
     # Check bundled templates first (will be overridden by user)
-    for name, _ in iter_package_files("foliate.defaults.templates", suffix=".html"):
+    for name, _ in iter_package_files(DEFAULT_TEMPLATES_PACKAGE, suffix=".html"):
         templates[name] = "bundled"
 
     # Check user templates (override bundled)
-    user_templates = vault_path / ".foliate" / "templates"
+    user_templates = get_user_templates_dir(vault_path)
     if user_templates.exists():
         for template_file in user_templates.glob("*.html"):
             templates[template_file.name] = "user"

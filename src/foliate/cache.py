@@ -88,17 +88,19 @@ def get_templates_mtime(vault_path: Path) -> float:
     """
     import importlib.resources
 
+    from .templates import DEFAULT_TEMPLATES_PACKAGE, get_user_templates_dir
+
     max_mtime = 0.0
 
     # Check user templates, including nested partials/includes.
-    user_templates = vault_path / ".foliate" / "templates"
+    user_templates = get_user_templates_dir(vault_path)
     if user_templates.exists():
         for template_file in user_templates.rglob("*.html"):
             max_mtime = max(max_mtime, template_file.stat().st_mtime)
 
     # Check bundled templates
     try:
-        templates_pkg = importlib.resources.files("foliate.defaults.templates")
+        templates_pkg = importlib.resources.files(DEFAULT_TEMPLATES_PACKAGE)
         for item in templates_pkg.iterdir():
             if item.is_file() and item.name.endswith(".html"):
                 # For traversable resources, try to get mtime if it's a real file
