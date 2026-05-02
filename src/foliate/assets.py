@@ -35,6 +35,11 @@ SUPPORTED_ASSET_EXTENSIONS = {
 }
 
 
+def get_user_static_dir(vault_path: Path) -> Path:
+    """Return the standard project static override directory."""
+    return vault_path / ".foliate" / "static"
+
+
 def _should_copy_file(path: Path, filter_extensions: set[str] | None) -> bool:
     """Return whether a file should be copied under the active filter."""
     return not filter_extensions or path.suffix.lower() in filter_extensions
@@ -183,7 +188,7 @@ def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -
     copy_package_files("foliate.defaults.static", bundled_static, force=True)
 
     # Override with user static files if present
-    user_static = vault_path / ".foliate" / "static"
+    user_static = get_user_static_dir(vault_path)
     if user_static.is_dir():
         shutil.copytree(user_static, bundled_static, dirs_exist_ok=True)
 

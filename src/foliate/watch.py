@@ -8,7 +8,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .assets import SUPPORTED_ASSET_EXTENSIONS
+from .assets import SUPPORTED_ASSET_EXTENSIONS, get_user_static_dir
 from .build import build as do_build
 from .config import Config
 from .templates import get_user_templates_dir
@@ -227,7 +227,7 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
 
     # Also watch .foliate/templates and .foliate/static if they exist
     templates_dir = get_user_templates_dir(vault_path)
-    static_dir = vault_path / ".foliate" / "static"
+    static_dir = get_user_static_dir(vault_path)
 
     if templates_dir.exists():
         observer.schedule(handler, str(templates_dir), recursive=True)

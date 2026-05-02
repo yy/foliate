@@ -5,7 +5,7 @@ from typing import NoReturn
 
 import click
 
-from .assets import robust_rmtree
+from .assets import get_user_static_dir, robust_rmtree
 from .config import Config
 from .resources import copy_package_files, read_package_text
 from .templates import DEFAULT_TEMPLATES_PACKAGE
@@ -92,7 +92,7 @@ def init(force: bool):
     foliate_dir = Path.cwd() / ".foliate"
     config_file = foliate_dir / "config.toml"
     templates_dir = foliate_dir / "templates"
-    static_dir = foliate_dir / "static"
+    static_dir = get_user_static_dir(Path.cwd())
 
     conflict = _validate_init_paths(
         foliate_dir,

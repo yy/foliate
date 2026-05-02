@@ -593,6 +593,30 @@ class TestDeployCommand:
             assert result.exit_code == 1
             assert "No deploy target configured" in result.output
 
+    def test_reports_invalid_deploy_target_config_cleanly(self):
+        """Invalid deploy target types should fail without a traceback."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text(
+                """
+[site]
+name = "Test"
+
+[deploy]
+target = 123
+""",
+                encoding="utf-8",
+            )
+
+            result = runner.invoke(main, ["deploy"])
+
+            assert result.exit_code == 1
+            assert "Error: Config section [deploy].target" in result.output
+            assert "must be a string, got int" in result.output
+            assert "Traceback" not in result.output
+
     @patch("foliate.deploy.deploy_github_pages")
     def test_calls_deploy_function(self, mock_deploy):
         """Should call deploy_github_pages with correct args."""

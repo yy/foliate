@@ -7,12 +7,17 @@ from foliate.assets import (
     copy_directory_incremental,
     copy_static_assets,
     copy_user_assets,
+    get_user_static_dir,
 )
 
 
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def test_get_user_static_dir_returns_standard_project_path(tmp_path):
+    assert get_user_static_dir(tmp_path) == tmp_path / ".foliate" / "static"
 
 
 def test_copy_directory_incremental_removes_deleted_files():

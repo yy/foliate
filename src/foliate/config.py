@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, TypeVar
 
+from .assets import get_user_static_dir
 from .markdown_utils import slugify_path
 
 T = TypeVar("T")
@@ -375,6 +376,18 @@ class Config:
                 return expand_path(value)
             return value
 
+        def _expand_string_path_value(*, section: str, field_name: str):
+            validate_string = _require_string_value(
+                section=section,
+                field_name=field_name,
+                config_path=config_path,
+            )
+
+            def _transform(value: object) -> object:
+                return _expand_path_value(validate_string(value))
+
+            return _transform
+
         # Validate top-level sections
         valid_sections = {
             "site",
@@ -423,7 +436,12 @@ class Config:
             DeployConfig,
             config.deploy,
             config_path,
-            transforms={"target": _expand_path_value},
+            transforms={
+                "target": _expand_string_path_value(
+                    section="deploy",
+                    field_name="target",
+                ),
+            },
         )
         config.feed = _load_optional_dataclass_section(
             data, "feed", FeedConfig, config.feed, config_path
@@ -524,7 +542,7 @@ class Config:
     def get_static_dir(self) -> Path | None:
         """Get custom static directory if it exists."""
         if self.vault_path:
-            static_dir = self.get_foliate_dir() / "static"
+            static_dir = get_user_static_dir(self.vault_path)
             if static_dir.exists():
                 return static_dir
         return None

@@ -5,6 +5,7 @@ from collections.abc import Iterable, Iterator
 from datetime import datetime
 from pathlib import Path
 
+from .assets import get_user_static_dir
 from .cache import BUILD_CACHE_FILE, load_build_cache
 from .config import Config
 
@@ -315,7 +316,7 @@ def _get_newest_source_mtime(config: Config) -> float:
             _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
             _iter_existing_file(vault_path / ".foliate" / "config.toml"),
             _iter_files(vault_path / ".foliate" / "templates"),
-            _iter_files(vault_path / ".foliate" / "static"),
+            _iter_files(get_user_static_dir(vault_path)),
         )
         for path in paths
     )

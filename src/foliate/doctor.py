@@ -5,6 +5,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from .assets import get_user_static_dir
 from .config import Config
 from .templates import (
     get_template_path,
@@ -98,7 +99,7 @@ def run_doctor(
     warnings.extend(template_warnings)
     ok.extend(template_ok)
 
-    user_static = vault_path / ".foliate" / "static"
+    user_static = get_user_static_dir(vault_path)
     static_warnings, static_ok = _check_optional_directory(
         user_static,
         base=start_path,
