@@ -504,6 +504,24 @@ wiki_prefix = 123
         with pytest.raises(TypeError, match=r"\[build\]\.wiki_prefix.*string"):
             Config.load(config_path)
 
+    def test_load_raises_on_invalid_build_ignored_folders_type(self, tmp_path):
+        """Ignored folders must be a list before source filtering uses them."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[build]
+ignored_folders = 123
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=r"\[build\]\.ignored_folders.*list"):
+            Config.load(config_path)
+
     def test_load_raises_on_invalid_deploy_target_type(self, tmp_path):
         """The deploy target must be a string before path expansion."""
         import pytest

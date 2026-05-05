@@ -309,6 +309,33 @@ quarto_enabled = true
             assert result.exit_code == 1
             assert "--serve cannot be used with --dry-run" in result.output
 
+    def test_dry_run_reports_invalid_ignored_folders_cleanly(self):
+        """Invalid ignored_folders types should fail without a traceback."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text(
+                """
+[build]
+ignored_folders = 123
+""",
+                encoding="utf-8",
+            )
+            private_dir = Path("_private")
+            private_dir.mkdir()
+            (private_dir / "secret.md").write_text(
+                "---\npublic: true\n---\nSecret",
+                encoding="utf-8",
+            )
+
+            result = runner.invoke(main, ["build", "--dry-run"])
+
+            assert result.exit_code == 1
+            assert "Error: Config section [build].ignored_folders" in result.output
+            assert "must be a list of strings, got int" in result.output
+            assert "Traceback" not in result.output
+
 
 class TestCliHelpers:
     """Tests for shared CLI helper behavior."""

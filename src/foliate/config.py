@@ -179,6 +179,29 @@ def _require_string_value(
     return _validate
 
 
+def _require_string_list_value(
+    *, section: str, field_name: str, config_path: Path
+) -> Callable[[object], object]:
+    """Return a transform that validates a config value is a list of strings."""
+
+    def _validate(value: object) -> object:
+        if not isinstance(value, list):
+            raise TypeError(
+                f"Config section [{section}].{field_name} in {config_path} "
+                f"must be a list of strings, got {type(value).__name__}"
+            )
+        for index, item in enumerate(value):
+            if not isinstance(item, str):
+                raise TypeError(
+                    f"Config section [{section}].{field_name}[{index}] "
+                    f"in {config_path} must be a string, "
+                    f"got {type(item).__name__}"
+                )
+        return value
+
+    return _validate
+
+
 def _default_nav_items(
     wiki_base_url: str = "/wiki/",
     home_page: str = "Home",
@@ -412,6 +435,11 @@ class Config:
             config.build,
             config_path,
             transforms={
+                "ignored_folders": _require_string_list_value(
+                    section="build",
+                    field_name="ignored_folders",
+                    config_path=config_path,
+                ),
                 "wiki_prefix": _require_string_value(
                     section="build",
                     field_name="wiki_prefix",
