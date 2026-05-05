@@ -238,6 +238,22 @@ def _append_page_lines(
         lines.append(f"{prefix}{formatter(page)}")
 
 
+def _append_page_section(
+    lines: list[str],
+    header: str,
+    pages: list[PageStatus],
+    *,
+    prefix: str,
+    formatter: Callable[[PageStatus], str] = _format_page_label,
+    trailing_blank: bool = True,
+) -> None:
+    """Append a report section with consistent header, rows, and spacing."""
+    lines.append(header)
+    _append_page_lines(lines, pages, prefix=prefix, formatter=formatter)
+    if trailing_blank:
+        lines.append("")
+
+
 def format_status_report(report: StatusReport, verbose: bool = False) -> str:
     """Format a status report for display.
 
@@ -260,23 +276,21 @@ def format_status_report(report: StatusReport, verbose: bool = False) -> str:
     private = report.private_pages
 
     if new:
-        lines.append(f"New pages ({len(new)}):")
-        _append_page_lines(lines, new, prefix="  + ")
-        lines.append("")
+        _append_page_section(lines, f"New pages ({len(new)}):", new, prefix="  + ")
 
     if modified:
-        lines.append(f"Modified pages ({len(modified)}):")
-        _append_page_lines(lines, modified, prefix="  ~ ")
-        lines.append("")
+        _append_page_section(
+            lines, f"Modified pages ({len(modified)}):", modified, prefix="  ~ "
+        )
 
     if not new and not modified:
         lines.append("No new or modified pages.")
         lines.append("")
 
     if verbose and unchanged:
-        lines.append(f"Unchanged pages ({len(unchanged)}):")
-        _append_page_lines(lines, unchanged, prefix="    ")
-        lines.append("")
+        _append_page_section(
+            lines, f"Unchanged pages ({len(unchanged)}):", unchanged, prefix="    "
+        )
 
     # Summary line
     total_public = len(report.public_pages)
@@ -308,21 +322,37 @@ def format_build_dry_run_report(
         state = "forced" if force_rebuild else page.state
         return f"{page.page_path} ({state}){_published_marker(page)}"
 
-    lines.append(f"Would build ({len(build_candidates)}):")
-    _append_page_lines(
-        lines, build_candidates, prefix="  + ", formatter=_format_build_candidate
+    _append_page_section(
+        lines,
+        f"Would build ({len(build_candidates)}):",
+        build_candidates,
+        prefix="  + ",
+        formatter=_format_build_candidate,
+        trailing_blank=False,
     )
 
-    if verbose and not force_rebuild and report.unchanged_pages:
+    unchanged = report.unchanged_pages
+    if verbose and not force_rebuild and unchanged:
         lines.append("")
-        lines.append(f"Cached/unchanged ({len(report.unchanged_pages)}):")
-        _append_page_lines(lines, report.unchanged_pages, prefix="    ")
+        _append_page_section(
+            lines,
+            f"Cached/unchanged ({len(unchanged)}):",
+            unchanged,
+            prefix="    ",
+            trailing_blank=False,
+        )
 
-    if report.private_pages:
+    private = report.private_pages
+    if private:
         lines.append("")
-        lines.append(f"Private pages ({len(report.private_pages)}, skipped)")
-        if verbose:
-            _append_page_lines(lines, report.private_pages, prefix="  - ")
+        private_pages = private if verbose else []
+        _append_page_section(
+            lines,
+            f"Private pages ({len(private)}, skipped)",
+            private_pages,
+            prefix="  - ",
+            trailing_blank=False,
+        )
 
     lines.append("")
     lines.append(
@@ -332,7 +362,7 @@ def format_build_dry_run_report(
                 f"{len(report.public_pages)} public",
                 f"{len(report.published_pages)} published",
                 f"{len(build_candidates)} would build",
-                f"{len(report.private_pages)} private",
+                f"{len(private)} private",
             ]
         )
     )

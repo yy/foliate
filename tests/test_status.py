@@ -658,6 +658,31 @@ class TestFormatStatusReport:
         output = format_status_report(report)
         assert "1 published" in output
 
+    def test_verbose_report_has_stable_section_order(self):
+        """Verbose output keeps the established section order and spacing."""
+        pages = [
+            PageStatus("new-page", None, "/wiki/", False, True, True, "new"),
+            PageStatus("edited", None, "/wiki/", False, True, False, "modified"),
+            PageStatus("cached", None, "/wiki/", False, True, False, "unchanged"),
+            PageStatus("private", None, "/wiki/", False, False, False, "unchanged"),
+        ]
+        report = StatusReport(pages=pages)
+
+        output = format_status_report(report, verbose=True)
+
+        assert output == (
+            "New pages (1):\n"
+            "  + new-page [published]\n"
+            "\n"
+            "Modified pages (1):\n"
+            "  ~ edited\n"
+            "\n"
+            "Unchanged pages (1):\n"
+            "    cached\n"
+            "\n"
+            "Summary: 3 public, 1 published, 1 new, 1 modified, 1 private"
+        )
+
 
 class TestFormatBuildDryRunReport:
     """Tests for format_build_dry_run_report()."""
