@@ -183,6 +183,46 @@ def process_html_file(
         return False
 
 
+def _is_static_html_file(html_file: Path, build_dir: Path) -> bool:
+    """Return whether an output HTML file lives under build/static."""
+    try:
+        relative_path = html_file.relative_to(build_dir)
+    except ValueError:
+        return False
+    return bool(relative_path.parts and relative_path.parts[0] == "static")
+
+
+def _find_single_page_html_files(
+    build_dir: Path,
+    wiki_prefix: str,
+    single_page: str,
+    slugify: bool,
+) -> list[Path]:
+    """Return existing HTML outputs for a single source page."""
+    output_page = slugify_path(single_page) if slugify else single_page
+    possible_paths = [
+        build_dir / wiki_prefix / output_page / "index.html",
+        build_dir / output_page / "index.html",
+    ]
+
+    html_files: list[Path] = []
+    seen_paths: set[Path] = set()
+    for path in possible_paths:
+        if path.exists() and path not in seen_paths:
+            html_files.append(path)
+            seen_paths.add(path)
+    return html_files
+
+
+def _find_all_html_files(build_dir: Path) -> list[Path]:
+    """Return all post-processable HTML files below a build directory."""
+    return [
+        html_file
+        for html_file in build_dir.glob("**/index.html")
+        if not _is_static_html_file(html_file, build_dir)
+    ]
+
+
 def postprocess_links(
     config: Config,
     public_pages: list[Page],
@@ -225,33 +265,15 @@ def postprocess_links(
     if not single_page:
         debug(f"Post-processing with {len(public_paths)} public pages...")
 
-    # Find HTML files to process
-    html_files: list[Path] = []
-
     if single_page:
-        # Process only the specified page
-        sp = slugify_path(single_page) if slugify else single_page
-        possible_paths = [
-            build_dir / wiki_prefix / sp / "index.html",  # Wiki page
-            build_dir / sp / "index.html",  # Homepage page
-        ]
-
-        seen_paths: set[Path] = set()
-        for path in possible_paths:
-            if path.exists() and path not in seen_paths:
-                html_files.append(path)
-                seen_paths.add(path)
-
+        html_files = _find_single_page_html_files(
+            build_dir, wiki_prefix, single_page, slugify
+        )
         if not html_files:
             warning(f"Could not find HTML file for page '{single_page}'")
             return False
     else:
-        # Find all HTML files in the build directory (excluding static)
-        for html_file in build_dir.glob("**/index.html"):
-            relative_path = html_file.relative_to(build_dir)
-            if not str(relative_path).startswith("static/"):
-                html_files.append(html_file)
-
+        html_files = _find_all_html_files(build_dir)
         debug(f"  Processing {len(html_files)} HTML files...")
 
     modified_count = 0

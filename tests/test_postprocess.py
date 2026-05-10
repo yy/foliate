@@ -331,3 +331,38 @@ class TestPostprocessLinks:
             assert "<a" not in (home_dir / "index.html").read_text()
             assert 'class="wikilink-private"' in (wiki_dir / "index.html").read_text()
             assert 'class="wikilink-private"' in (home_dir / "index.html").read_text()
+
+    def test_full_postprocess_skips_static_index_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from foliate.config import Config
+
+            config = Config()
+            config.vault_path = Path(tmpdir)
+
+            build_dir = Path(tmpdir) / ".foliate" / "build"
+            wiki_dir = build_dir / "wiki" / "Home"
+            static_dir = build_dir / "static"
+            wiki_dir.mkdir(parents=True)
+            static_dir.mkdir(parents=True)
+
+            private_link = '<a href="/wiki/Private/" class="wikilink">Private</a>'
+            (wiki_dir / "index.html").write_text(private_link, encoding="utf-8")
+            (static_dir / "index.html").write_text(private_link, encoding="utf-8")
+
+            public_pages = [
+                Page.from_markdown(
+                    "Home",
+                    {"public": True},
+                    "",
+                    render_html=False,
+                    base_url="/wiki/",
+                )
+            ]
+
+            result = postprocess_links(config, public_pages)
+
+            assert result is True
+            assert "<a" not in (wiki_dir / "index.html").read_text(encoding="utf-8")
+            assert '<a href="/wiki/Private/" class="wikilink">Private</a>' in (
+                static_dir / "index.html"
+            ).read_text(encoding="utf-8")

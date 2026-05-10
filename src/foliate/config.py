@@ -202,6 +202,22 @@ def _require_string_list_value(
     return _validate
 
 
+def _require_int_value(
+    *, section: str, field_name: str, config_path: Path
+) -> Callable[[object], object]:
+    """Return a transform that validates a config value is an integer."""
+
+    def _validate(value: object) -> object:
+        if type(value) is not int:
+            raise TypeError(
+                f"Config section [{section}].{field_name} in {config_path} "
+                f"must be an integer, got {type(value).__name__}"
+            )
+        return value
+
+    return _validate
+
+
 def _default_nav_items(
     wiki_base_url: str = "/wiki/",
     home_page: str = "Home",
@@ -472,7 +488,23 @@ class Config:
             },
         )
         config.feed = _load_optional_dataclass_section(
-            data, "feed", FeedConfig, config.feed, config_path
+            data,
+            "feed",
+            FeedConfig,
+            config.feed,
+            config_path,
+            transforms={
+                "items": _require_int_value(
+                    section="feed",
+                    field_name="items",
+                    config_path=config_path,
+                ),
+                "window": _require_int_value(
+                    section="feed",
+                    field_name="window",
+                    config_path=config_path,
+                ),
+            },
         )
 
         config.nav = _load_nav_items(

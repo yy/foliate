@@ -254,6 +254,42 @@ class TestIsPathIgnored:
         assert build.is_path_ignored(file_path, tmp_path, ["_private"]) is False
 
 
+class TestIterContentSourceFiles:
+    """Tests for the shared content source file iterator."""
+
+    def test_excludes_ignored_folders_and_foliate_internals(self, tmp_path):
+        config = Config()
+        config.build.ignored_folders = ["_private"]
+
+        (tmp_path / "public.md").write_text("Public", encoding="utf-8")
+        (tmp_path / "paper.qmd").write_text("Quarto", encoding="utf-8")
+
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "Story.MD").write_text("Uppercase", encoding="utf-8")
+
+        private_dir = tmp_path / "_private"
+        private_dir.mkdir()
+        (private_dir / "secret.md").write_text("Private", encoding="utf-8")
+
+        foliate_dir = tmp_path / ".foliate"
+        foliate_dir.mkdir()
+        (foliate_dir / "notes.md").write_text("Internal", encoding="utf-8")
+
+        (tmp_path / "image.png").write_text("Not content", encoding="utf-8")
+
+        files = [
+            path.relative_to(tmp_path).as_posix()
+            for path in build.iter_content_source_files(
+                tmp_path,
+                config,
+                {".md", ".qmd"},
+            )
+        ]
+
+        assert files == ["docs/Story.MD", "paper.qmd", "public.md"]
+
+
 class TestBuildIntegration:
     """Integration tests for the build process."""
 

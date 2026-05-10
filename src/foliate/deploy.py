@@ -263,28 +263,6 @@ def _get_newest_mtime(paths: Iterable[Path]) -> float:
     return max_mtime
 
 
-def _iter_content_source_files(config: Config) -> Iterator[Path]:
-    """Yield content source files that participate in build staleness checks."""
-    from .build import is_path_ignored, iter_source_files
-
-    vault_path = config.vault_path
-    if not vault_path:
-        return
-
-    for source_file in iter_source_files(vault_path, {".md", ".qmd"}):
-        try:
-            rel_path = source_file.relative_to(vault_path)
-        except ValueError:
-            continue
-
-        if rel_path.parts and rel_path.parts[0] == ".foliate":
-            continue
-        if is_path_ignored(source_file, vault_path, config.build.ignored_folders):
-            continue
-
-        yield source_file
-
-
 def _get_newest_source_mtime(config: Config) -> float:
     """Get the most recent modification time of any source file.
 
@@ -302,6 +280,7 @@ def _get_newest_source_mtime(config: Config) -> float:
         Most recent mtime, or 0 if no files found
     """
     from .assets import SUPPORTED_ASSET_EXTENSIONS
+    from .build import iter_content_source_files
     from .cache import get_global_deps_mtime
 
     vault_path = config.vault_path
@@ -312,7 +291,7 @@ def _get_newest_source_mtime(config: Config) -> float:
     file_mtime = _get_newest_mtime(
         path
         for paths in (
-            _iter_content_source_files(config),
+            iter_content_source_files(vault_path, config, {".md", ".qmd"}),
             _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
             _iter_existing_file(vault_path / ".foliate" / "config.toml"),
             _iter_files(vault_path / ".foliate" / "templates"),

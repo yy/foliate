@@ -196,6 +196,30 @@ def iter_source_files(vault_path: Path, suffixes: set[str]) -> Iterator[Path]:
     yield from matching
 
 
+def iter_content_source_files(
+    vault_path: Path,
+    config: Config,
+    suffixes: set[str],
+) -> Iterator[Path]:
+    """Iterate buildable content files, excluding ignored and internal paths."""
+    ignored_folders = config.build.ignored_folders
+
+    for source_file in iter_source_files(vault_path, suffixes):
+        if is_path_ignored(source_file, vault_path, ignored_folders):
+            continue
+
+        try:
+            rel_path = source_file.relative_to(vault_path)
+        except ValueError:
+            continue
+
+        # Never treat .foliate internals as content pages.
+        if rel_path.parts and rel_path.parts[0] == ".foliate":
+            continue
+
+        yield source_file
+
+
 def make_duplicate_warning_callback(
     base_path: Path,
     label: str = "sources",
@@ -229,23 +253,11 @@ def iter_content_source_candidates(
     suffixes: set[str],
 ) -> Iterator[SourceCandidate]:
     """Iterate candidate content sources with resolved page metadata."""
-    ignored_folders = config.build.ignored_folders
     homepage_dir = config.build.homepage_dir
     wiki_base_url = config.base_urls["wiki"]
 
-    for source_file in iter_source_files(vault_path, suffixes):
-        if is_path_ignored(source_file, vault_path, ignored_folders):
-            continue
-
-        try:
-            rel_path = source_file.relative_to(vault_path)
-        except ValueError:
-            continue
-
-        # Never treat .foliate internals as content pages.
-        if rel_path.parts and rel_path.parts[0] == ".foliate":
-            continue
-
+    for source_file in iter_content_source_files(vault_path, config, suffixes):
+        rel_path = source_file.relative_to(vault_path)
         route = _resolve_content_route(
             rel_path.with_suffix("").as_posix(),
             homepage_dir,

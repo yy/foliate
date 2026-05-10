@@ -540,6 +540,42 @@ target = 123
         with pytest.raises(TypeError, match=r"\[deploy\]\.target.*string"):
             Config.load(config_path)
 
+    def test_load_raises_on_invalid_feed_items_type(self, tmp_path):
+        """Feed item limits must be integers before feed generation slices pages."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[feed]
+items = "many"
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=r"\[feed\]\.items.*integer"):
+            Config.load(config_path)
+
+    def test_load_raises_on_invalid_feed_window_type(self, tmp_path):
+        """Feed windows must be integers before feed date filtering runs."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[feed]
+window = "recent"
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=r"\[feed\]\.window.*integer"):
+            Config.load(config_path)
+
     def test_load_raises_on_missing_nav_item_url(self, tmp_path):
         """Nav items still require url and label keys."""
         import pytest
