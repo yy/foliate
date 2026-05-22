@@ -293,6 +293,25 @@ class TestIterContentSourceFiles:
 class TestBuildIntegration:
     """Integration tests for the build process."""
 
+    def test_generate_full_site_outputs_runs_global_artifacts(self, tmp_path):
+        """The full-build helper owns all page-set-wide outputs."""
+        config = Config()
+        config.feed.enabled = True
+        env = Environment()
+
+        with (
+            patch("foliate.build.render_home_page") as render_home_page,
+            patch("foliate.build.generate_site_files") as generate_site_files,
+            patch("foliate.feed.generate_feed") as generate_feed,
+            patch("foliate.logging.debug") as debug,
+        ):
+            build._generate_full_site_outputs([], [], tmp_path, env, config)
+
+        render_home_page.assert_called_once_with([], [], tmp_path, env, config)
+        generate_site_files.assert_called_once_with(tmp_path, env, config, [], [])
+        debug.assert_called_once_with("Generating Atom feed...")
+        generate_feed.assert_called_once_with([], config, env, tmp_path)
+
     def test_build_single_page(self, tmp_path):
         """Can build a single page."""
         vault_path = tmp_path / "vault"

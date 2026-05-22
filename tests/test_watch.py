@@ -3,13 +3,13 @@
 import threading
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 from watchdog.events import DirCreatedEvent, FileModifiedEvent, FileMovedEvent
 
 from foliate.config import Config
-from foliate.watch import FoliateEventHandler, watch
+from foliate.watch import FoliateEventHandler, RebuildCoordinator, watch
 
 
 class TestFoliateEventHandler:
@@ -710,6 +710,53 @@ class TestRebuildCallback:
             if handler_captured:
                 handler_captured.rebuild_callback(force=True)
                 mock_build.assert_called_with(config=config, force_rebuild=True)
+
+
+class TestRebuildCoordinator:
+    """Tests for rebuild request coordination."""
+
+    @pytest.fixture
+    def config(self, tmp_path):
+        """Create a config for testing."""
+        config = Config()
+        config.vault_path = tmp_path
+        return config
+
+    def test_reentrant_call_runs_after_current_rebuild(self, config):
+        """A rebuild request made during another rebuild should run next."""
+        coordinator = RebuildCoordinator(config)
+
+        def request_another_rebuild(*_args, **_kwargs):
+            if mock_build.call_count == 1:
+                coordinator(force=False)
+
+        with patch(
+            "foliate.watch.do_build", side_effect=request_another_rebuild
+        ) as mock_build:
+            coordinator(force=False)
+
+        assert mock_build.call_args_list == [
+            call(config=config, force_rebuild=False),
+            call(config=config, force_rebuild=False),
+        ]
+
+    def test_queued_force_is_preserved_for_next_rebuild(self, config):
+        """A full-rebuild request should not be downgraded while waiting."""
+        coordinator = RebuildCoordinator(config)
+
+        def request_full_rebuild(*_args, **_kwargs):
+            if mock_build.call_count == 1:
+                coordinator(force=True)
+
+        with patch(
+            "foliate.watch.do_build", side_effect=request_full_rebuild
+        ) as mock_build:
+            coordinator(force=False)
+
+        assert mock_build.call_args_list == [
+            call(config=config, force_rebuild=False),
+            call(config=config, force_rebuild=True),
+        ]
 
 
 class TestRelevantExtensions:

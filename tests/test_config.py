@@ -486,6 +486,24 @@ items = "bad"
         with pytest.raises(TypeError, match=r"\[nav\]\.items.*must be a list"):
             Config.load(config_path)
 
+    def test_load_raises_on_invalid_site_url_type(self, tmp_path):
+        """Site URLs must be strings before feed generation normalizes them."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[site]
+url = 123
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=r"\[site\]\.url.*string"):
+            Config.load(config_path)
+
     def test_load_raises_on_invalid_build_wiki_prefix_type(self, tmp_path):
         """The wiki prefix must be a string because it is used in URL paths."""
         import pytest
@@ -520,6 +538,24 @@ ignored_folders = 123
         )
 
         with pytest.raises(TypeError, match=r"\[build\]\.ignored_folders.*list"):
+            Config.load(config_path)
+
+    def test_load_raises_on_invalid_build_recent_pages_type(self, tmp_path):
+        """Recent-page limits must be integers before home-page rendering slices."""
+        import pytest
+
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            """
+[build]
+recent_pages = "many"
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=r"\[build\]\.recent_pages.*integer"):
             Config.load(config_path)
 
     def test_load_raises_on_invalid_deploy_target_type(self, tmp_path):

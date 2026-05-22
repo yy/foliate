@@ -442,7 +442,18 @@ class Config:
 
         # Load optional dataclass-backed sections through one shared path.
         config.site = _load_optional_dataclass_section(
-            data, "site", SiteConfig, config.site, config_path
+            data,
+            "site",
+            SiteConfig,
+            config.site,
+            config_path,
+            transforms={
+                "url": _require_string_value(
+                    section="site",
+                    field_name="url",
+                    config_path=config_path,
+                ),
+            },
         )
         config.build = _load_optional_dataclass_section(
             data,
@@ -459,6 +470,11 @@ class Config:
                 "wiki_prefix": _require_string_value(
                     section="build",
                     field_name="wiki_prefix",
+                    config_path=config_path,
+                ),
+                "recent_pages": _require_int_value(
+                    section="build",
+                    field_name="recent_pages",
                     config_path=config_path,
                 ),
             },

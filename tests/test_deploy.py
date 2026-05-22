@@ -6,9 +6,15 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from foliate.assets import get_user_static_dir
 from foliate.cache import save_build_cache
 from foliate.config import Config, DeployConfig
-from foliate.deploy import deploy_github_pages, is_build_stale
+from foliate.deploy import (
+    _iter_deploy_source_files,
+    deploy_github_pages,
+    is_build_stale,
+)
+from foliate.templates import get_user_templates_dir
 
 
 class TestIsBuildStale:
@@ -121,6 +127,49 @@ class TestIsBuildStale:
             result = is_build_stale(config)
 
             assert result is True
+
+    def test_deploy_source_file_scan_includes_project_override_directories(self):
+        """The stale-build source inventory should include project overrides."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault = Path(tmpdir)
+            config = Config()
+            config.vault_path = vault
+
+            (vault / "page.md").write_text("---\npublic: true\n---\n# Page")
+
+            assets_dir = vault / "assets"
+            assets_dir.mkdir()
+            (assets_dir / "image.png").write_text("png")
+            (assets_dir / "notes.exe").write_text("not copied")
+
+            config_dir = vault / ".foliate"
+            config_dir.mkdir()
+            (config_dir / "config.toml").write_text("[site]\nname = 'Test'")
+
+            user_templates = get_user_templates_dir(vault)
+            user_templates.mkdir()
+            (user_templates / "layout.html").write_text("<html>{{ content }}</html>")
+
+            user_static = get_user_static_dir(vault)
+            user_static.mkdir()
+            (user_static / "main.css").write_text("body { color: black; }")
+
+            cache_dir = vault / ".foliate" / "cache"
+            cache_dir.mkdir()
+            (cache_dir / ".build_cache").write_text("{}")
+
+            sources = {
+                path.relative_to(vault).as_posix()
+                for path in _iter_deploy_source_files(config)
+            }
+
+            assert "page.md" in sources
+            assert "assets/image.png" in sources
+            assert "assets/notes.exe" not in sources
+            assert ".foliate/config.toml" in sources
+            assert ".foliate/templates/layout.html" in sources
+            assert ".foliate/static/main.css" in sources
+            assert ".foliate/cache/.build_cache" not in sources
 
     @patch("foliate.cache.get_global_deps_mtime")
     def test_returns_true_when_bundled_template_is_newer_than_build(

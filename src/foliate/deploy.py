@@ -8,6 +8,7 @@ from pathlib import Path
 from .assets import get_user_static_dir
 from .cache import BUILD_CACHE_FILE, load_build_cache
 from .config import Config
+from .templates import get_user_templates_dir
 
 
 def _dry_run_has_rsync_changes(rsync_stdout: str) -> bool:
@@ -263,6 +264,26 @@ def _get_newest_mtime(paths: Iterable[Path]) -> float:
     return max_mtime
 
 
+def _iter_deploy_source_files(config: Config) -> Iterator[Path]:
+    """Yield project files that can make an existing build stale."""
+    from .assets import SUPPORTED_ASSET_EXTENSIONS
+    from .build import iter_content_source_files
+
+    vault_path = config.vault_path
+
+    if not vault_path:
+        return
+
+    for paths in (
+        iter_content_source_files(vault_path, config, {".md", ".qmd"}),
+        _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
+        _iter_existing_file(vault_path / ".foliate" / "config.toml"),
+        _iter_files(get_user_templates_dir(vault_path)),
+        _iter_files(get_user_static_dir(vault_path)),
+    ):
+        yield from paths
+
+
 def _get_newest_source_mtime(config: Config) -> float:
     """Get the most recent modification time of any source file.
 
@@ -279,8 +300,6 @@ def _get_newest_source_mtime(config: Config) -> float:
     Returns:
         Most recent mtime, or 0 if no files found
     """
-    from .assets import SUPPORTED_ASSET_EXTENSIONS
-    from .build import iter_content_source_files
     from .cache import get_global_deps_mtime
 
     vault_path = config.vault_path
@@ -288,17 +307,7 @@ def _get_newest_source_mtime(config: Config) -> float:
     if not vault_path:
         return 0.0
 
-    file_mtime = _get_newest_mtime(
-        path
-        for paths in (
-            iter_content_source_files(vault_path, config, {".md", ".qmd"}),
-            _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
-            _iter_existing_file(vault_path / ".foliate" / "config.toml"),
-            _iter_files(vault_path / ".foliate" / "templates"),
-            _iter_files(get_user_static_dir(vault_path)),
-        )
-        for path in paths
-    )
+    file_mtime = _get_newest_mtime(_iter_deploy_source_files(config))
     return max(file_mtime, get_global_deps_mtime(config.config_path, vault_path))
 
 

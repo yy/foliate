@@ -146,6 +146,51 @@ class FoliateEventHandler(FileSystemEventHandler):
         self.rebuild_callback(force=needs_full_rebuild)
 
 
+class RebuildCoordinator:
+    """Serialize rebuild requests while preserving queued full rebuilds."""
+
+    def __init__(self, config: Config):
+        self.config = config
+        self._lock = threading.Lock()
+        self._pending = False
+        self._pending_force = False
+
+    def __call__(self, force: bool = False) -> None:
+        if not self._lock.acquire(blocking=False):
+            self._pending = True
+            if force:
+                self._pending_force = True
+            return
+
+        try:
+            while True:
+                force = self._consume_force(force)
+                self._run_build(force)
+
+                if not self._pending:
+                    break
+                force = False
+        finally:
+            self._lock.release()
+
+    def _consume_force(self, force: bool) -> bool:
+        if self._pending_force:
+            force = True
+        self._pending = False
+        self._pending_force = False
+        return force
+
+    def _run_build(self, force: bool) -> None:
+        from .logging import info
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        info(f"\n[{timestamp}] Rebuilding...")
+        start_time = time.time()
+        do_build(config=self.config, force_rebuild=force)
+        elapsed = time.time() - start_time
+        info(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
+
+
 def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     """Start watch mode with auto-rebuild and local server.
 
@@ -187,36 +232,7 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     info("Watching for changes... (Press Ctrl+C to stop)")
     info("=" * 60)
 
-    rebuild_lock = threading.Lock()
-    _pending = False
-    _pending_force = False
-
-    def rebuild_callback(force: bool = False):
-        nonlocal _pending, _pending_force
-        if not rebuild_lock.acquire(blocking=False):
-            _pending = True
-            if force:
-                _pending_force = True
-            return
-        try:
-            while True:
-                if _pending_force:
-                    force = True
-                _pending = False
-                _pending_force = False
-
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                info(f"\n[{timestamp}] Rebuilding...")
-                start_time = time.time()
-                do_build(config=config, force_rebuild=force)
-                elapsed = time.time() - start_time
-                info(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
-
-                if not _pending:
-                    break
-                force = False
-        finally:
-            rebuild_lock.release()
+    rebuild_callback = RebuildCoordinator(config)
 
     # Setup watchdog
     handler = FoliateEventHandler(config, rebuild_callback)

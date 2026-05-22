@@ -901,6 +901,25 @@ def generate_site_files(
     generate_sitemap(build_dir, public_pages)
 
 
+def _generate_full_site_outputs(
+    public_pages: list[Page],
+    published_pages: list[Page],
+    build_dir: Path,
+    env: Environment,
+    config: Config,
+) -> None:
+    """Generate artifacts that require the complete site page set."""
+    render_home_page(public_pages, published_pages, build_dir, env, config)
+    generate_site_files(build_dir, env, config, published_pages, public_pages)
+
+    if config.feed.enabled:
+        from .feed import generate_feed
+        from .logging import debug
+
+        debug("Generating Atom feed...")
+        generate_feed(published_pages, config, env, build_dir)
+
+
 # ---------------------------------------------------------------------------
 # Build orchestration
 # ---------------------------------------------------------------------------
@@ -1087,20 +1106,15 @@ def build(
         if removed:
             debug(f"  Removed {removed} stale page(s)")
 
-    # Re-render Home page with recent pages
+    # Generate artifacts that depend on the complete page set.
     if not single_page:
-        render_home_page(public_pages, published_pages, build_dir, env, config)
-
-    # Generate site-wide files only for full builds.
-    if not single_page:
-        generate_site_files(build_dir, env, config, published_pages, public_pages)
-
-    # Generate Atom feed
-    if config.feed.enabled and not single_page:
-        from .feed import generate_feed
-
-        debug("Generating Atom feed...")
-        generate_feed(published_pages, config, env, build_dir)
+        _generate_full_site_outputs(
+            public_pages,
+            published_pages,
+            build_dir,
+            env,
+            config,
+        )
 
     # Post-process HTML to sanitize private links
     from .postprocess import postprocess_links
