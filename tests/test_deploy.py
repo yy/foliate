@@ -10,6 +10,7 @@ from foliate.assets import get_user_static_dir
 from foliate.cache import save_build_cache
 from foliate.config import Config, DeployConfig
 from foliate.deploy import (
+    _build_rsync_args,
     _iter_deploy_source_files,
     deploy_github_pages,
     is_build_stale,
@@ -452,6 +453,49 @@ class TestIsBuildStale:
 
 class TestDeployGithubPages:
     """Tests for deploy_github_pages function."""
+
+    def test_build_rsync_args_for_deploy(self, tmp_path):
+        """Non-dry-run rsync args should preserve git and configured excludes."""
+        build_dir = tmp_path / "build"
+        target_dir = tmp_path / "target"
+
+        args = _build_rsync_args(
+            build_dir,
+            target_dir,
+            ["CNAME", "custom.txt"],
+            dry_run=False,
+        )
+
+        assert args == [
+            "rsync",
+            "-av",
+            "--checksum",
+            "--delete",
+            "--exclude=.git",
+            "--exclude=CNAME",
+            "--exclude=custom.txt",
+            f"{build_dir}/",
+            f"{target_dir}/",
+        ]
+
+    def test_build_rsync_args_for_dry_run(self, tmp_path):
+        """Dry-run rsync args should request itemized preview output."""
+        build_dir = tmp_path / "build"
+        target_dir = tmp_path / "target"
+
+        args = _build_rsync_args(build_dir, target_dir, [], dry_run=True)
+
+        assert args == [
+            "rsync",
+            "-av",
+            "--dry-run",
+            "--itemize-changes",
+            "--checksum",
+            "--delete",
+            "--exclude=.git",
+            f"{build_dir}/",
+            f"{target_dir}/",
+        ]
 
     def test_returns_false_when_build_dir_missing(self):
         """Should return False when build directory doesn't exist."""

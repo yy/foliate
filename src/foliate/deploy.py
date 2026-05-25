@@ -322,6 +322,37 @@ def _run_command(args: list[str], error_label: str, **kwargs):
         return None
 
 
+def _build_rsync_args(
+    build_dir: Path,
+    target: Path,
+    exclude_patterns: list[str],
+    *,
+    dry_run: bool,
+) -> list[str]:
+    """Build the rsync command used to copy build output into the deploy target."""
+    args = [
+        "rsync",
+        "-av",
+    ]
+    if dry_run:
+        args.extend(["--dry-run", "--itemize-changes"])
+
+    args.extend(
+        [
+            # Compare file contents, not just mtimes, so rebuilds that produce
+            # identical HTML do not create noisy deploy previews or no-op syncs.
+            "--checksum",
+            "--delete",
+            "--exclude=.git",  # Preserve target's git repo
+        ]
+    )
+    args.extend(f"--exclude={exclude}" for exclude in exclude_patterns)
+
+    # Source must end with / to copy contents, not directory itself.
+    args.extend([f"{build_dir}/", f"{target}/"])
+    return args
+
+
 def deploy_github_pages(
     config: Config,
     dry_run: bool = False,
@@ -417,28 +448,13 @@ def deploy_github_pages(
                 error(f"git pull failed: {stderr}")
                 return False
 
-    # Build rsync command
-    rsync_args = [
-        "rsync",
-        "-av",
-        # Compare file contents, not just mtimes, so rebuilds that produce
-        # identical HTML do not create noisy deploy previews or no-op syncs.
-        "--checksum",
-        "--delete",
-        "--exclude=.git",  # Preserve target's git repo
-    ]
-
-    # Add configured excludes
-    for exclude in config.deploy.exclude:
-        rsync_args.append(f"--exclude={exclude}")
-
-    # Source must end with / to copy contents, not directory itself
-    rsync_args.append(f"{build_dir}/")
-    rsync_args.append(f"{target}/")
-
+    rsync_args = _build_rsync_args(
+        build_dir,
+        target,
+        config.deploy.exclude,
+        dry_run=dry_run,
+    )
     if dry_run:
-        rsync_args.insert(1, "--dry-run")
-        rsync_args.insert(2, "--itemize-changes")
         info("Dry run - showing what would be done:\n")
 
     info(f"Syncing {build_dir} -> {target}")
