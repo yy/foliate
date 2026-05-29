@@ -477,6 +477,11 @@ class Config:
                     field_name="recent_pages",
                     config_path=config_path,
                 ),
+                "new_page_window": _require_int_value(
+                    section="build",
+                    field_name="new_page_window",
+                    config_path=config_path,
+                ),
             },
         )
         config.footer = _load_optional_dataclass_section(

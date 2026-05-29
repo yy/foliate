@@ -361,6 +361,40 @@ url = 123
             assert "must be a string, got int" in result.output
             assert "Traceback" not in result.output
 
+    def test_build_reports_invalid_new_page_window_cleanly(self):
+        """Invalid new_page_window types should fail before rendering pages."""
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            foliate_dir = Path(".foliate")
+            foliate_dir.mkdir()
+            (foliate_dir / "config.toml").write_text(
+                """
+[site]
+name = "Bug Repro"
+url = "https://example.com"
+
+[build]
+home_page = "Home"
+new_page_window = "soon"
+""",
+                encoding="utf-8",
+            )
+            Path("Home.md").write_text(
+                "---\npublic: true\npublished: 2026-05-01\n---\n# Home",
+                encoding="utf-8",
+            )
+            Path("Note.md").write_text(
+                "---\npublic: true\npublished: 2026-05-20\n---\n# Note",
+                encoding="utf-8",
+            )
+
+            result = runner.invoke(main, ["build"])
+
+            assert result.exit_code == 1
+            assert "Error: Config section [build].new_page_window" in result.output
+            assert "must be an integer, got str" in result.output
+            assert "Traceback" not in result.output
+
 
 class TestCliHelpers:
     """Tests for shared CLI helper behavior."""
