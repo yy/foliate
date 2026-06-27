@@ -1308,6 +1308,41 @@ home_redirect = "test"
 class TestBuildStats:
     """Tests for build statistics reporting."""
 
+    def test_iter_public_files_reads_cached_markdown_for_qmd(
+        self, tmp_path, monkeypatch
+    ):
+        """QMD sources should build from cached rendered markdown content."""
+        monkeypatch.setattr(
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: True
+        )
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[advanced]\nquarto_enabled = true\n")
+
+        qmd_file = vault_path / "paper.qmd"
+        qmd_file.write_text("---\npublic: true\n---\nRAW QMD", encoding="utf-8")
+
+        cached_md = (
+            vault_path / ".foliate" / "cache" / "quarto" / "rendered" / "paper.md"
+        )
+        cached_md.parent.mkdir(parents=True)
+        cached_md.write_text(
+            "---\npublic: true\n---\nRendered markdown", encoding="utf-8"
+        )
+
+        config = Config.load(config_path)
+        entries = list(build.iter_public_md_files(vault_path, config))
+
+        assert len(entries) == 1
+        source_file, page_path, _, _, content = entries[0]
+        assert source_file == qmd_file
+        assert page_path == "paper"
+        assert content == "Rendered markdown"
+
     def test_process_markdown_files_counts_skipped_private_pages(self, tmp_path):
         vault_path = tmp_path / "vault"
         vault_path.mkdir()

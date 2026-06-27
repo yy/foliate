@@ -1,8 +1,9 @@
 """Quarto preprocessing for foliate.
 
-Converts .qmd files to .md using quarto-prerender before the main build.
+Converts .qmd files to cached .md using quarto-prerender before the main build.
 """
 
+import shutil
 from pathlib import Path
 
 from .config import Config
@@ -27,6 +28,169 @@ def get_buildable_content_suffixes(config: Config) -> set[str]:
     return suffixes
 
 
+def get_cached_markdown_path(config: Config, qmd_file: Path) -> Path | None:
+    """Return the cached rendered markdown path for a Quarto source file."""
+    vault_path = config.vault_path
+    if not vault_path:
+        return None
+
+    try:
+        rel_path = qmd_file.resolve().relative_to(vault_path.resolve())
+    except ValueError:
+        return None
+
+    return config.get_cache_dir() / "quarto" / "rendered" / rel_path.with_suffix(".md")
+
+
+def get_preview_markdown_path(config: Config, qmd_file: Path) -> Path | None:
+    """Return the Obsidian preview markdown path for a Quarto source file."""
+    vault_path = config.vault_path
+    if not vault_path:
+        return None
+
+    preview_dir = config.advanced.quarto_preview_dir.strip()
+    if not preview_dir:
+        return None
+
+    try:
+        rel_path = qmd_file.resolve().relative_to(vault_path.resolve())
+    except ValueError:
+        return None
+
+    return vault_path / preview_dir / rel_path.with_suffix(".md")
+
+
+def get_quarto_asset_dir(config: Config, qmd_file: Path) -> Path | None:
+    """Return the public asset directory for a Quarto source file."""
+    vault_path = config.vault_path
+    if not vault_path:
+        return None
+
+    try:
+        rel_path = qmd_file.resolve().relative_to(vault_path.resolve())
+    except ValueError:
+        return None
+
+    assets_dir = vault_path.resolve() / "assets" / "quarto"
+    parent = rel_path.parent
+    if parent == Path("."):
+        return assets_dir / qmd_file.stem
+    return assets_dir / parent / qmd_file.stem
+
+
+def _is_metadata_line(line: str) -> bool:
+    """Return whether a line looks like a Quarto title-block author/date entry.
+
+    Author and date lines emitted under the generated title are short tokens
+    without sentence punctuation. Anything longer or sentence-like is treated
+    as body prose so a heading that happens to match the filename stem cannot
+    swallow real content (e.g. ``# stem`` immediately followed by a paragraph).
+    """
+    stripped = line.strip()
+    if not stripped or len(stripped) > 50:
+        return False
+    return stripped[-1] not in ".!?:"
+
+
+def _unescape_outside_code(text: str) -> str:
+    """Apply Quarto un-escaping, skipping fenced code blocks.
+
+    Quarto escapes Obsidian wikilink and pipe syntax that foliate needs back
+    in raw form, but those same sequences may appear literally inside fenced
+    code blocks, where they must be preserved verbatim.
+    """
+    out: list[str] = []
+    in_fence = False
+    fence_marker = ""
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if in_fence:
+            if stripped.startswith(fence_marker):
+                in_fence = False
+            out.append(line)
+            continue
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = True
+            fence_marker = stripped[:3]
+            out.append(line)
+            continue
+        line = line.replace(r"\[\[", "[[")
+        line = line.replace(r"\]\]", "]]")
+        line = line.replace(r"\|", "|")
+        line = line.replace("](./assets/", "](/assets/")
+        out.append(line)
+    return "\n".join(out)
+
+
+def _clean_rendered_markdown(text: str, qmd_file: Path) -> str:
+    """Clean Quarto GFM output for wiki rendering and Obsidian preview."""
+    lines = text.splitlines()
+    if lines and lines[0] == "---":
+        try:
+            end = lines.index("---", 1)
+        except ValueError:
+            end = -1
+        if end >= 0:
+            body_start = end + 1
+            generated_title = [
+                f"# {qmd_file.stem}",
+            ]
+            # Quarto's standalone GFM writer may add title/author/date lines
+            # after frontmatter. Foliate already renders the frontmatter title.
+            while body_start < len(lines) and lines[body_start] == "":
+                body_start += 1
+            if body_start < len(lines) and lines[body_start].lower() in {
+                title.lower() for title in generated_title
+            }:
+                body_start += 1
+                # Only consume short, metadata-like lines (author/date) so a
+                # body paragraph following the generated title is not lost.
+                while body_start < len(lines) and _is_metadata_line(lines[body_start]):
+                    body_start += 1
+                while body_start < len(lines) and lines[body_start] == "":
+                    body_start += 1
+                lines = lines[: end + 1] + [""] + lines[body_start:]
+
+    cleaned = _unescape_outside_code("\n".join(lines)).rstrip() + "\n"
+    return cleaned
+
+
+def _preview_is_stale(preview_md: Path, cached_md: Path) -> bool:
+    """Return whether the Obsidian preview is missing or older than the cache."""
+    if not preview_md.exists():
+        return True
+    return preview_md.stat().st_mtime < cached_md.stat().st_mtime
+
+
+def _write_preview(
+    config: Config, preview_md: Path, rendered_md: Path, qmd_file: Path
+) -> None:
+    """Write a generated Obsidian preview copy of rendered markdown."""
+    base_path = (config.vault_path or qmd_file.parent).resolve()
+    try:
+        rel_source = qmd_file.resolve().relative_to(base_path)
+    except ValueError:
+        rel_source = qmd_file
+
+    preview_md.parent.mkdir(parents=True, exist_ok=True)
+    content = rendered_md.read_text(encoding="utf-8")
+    warning = f"<!-- GENERATED FROM {rel_source.as_posix()}; DO NOT EDIT -->\n\n"
+    lines = content.splitlines(keepends=True)
+    if lines and lines[0].strip() == "---":
+        for index, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                insert_at = index + 1
+                while insert_at < len(lines) and lines[insert_at].strip() == "":
+                    insert_at += 1
+                preview_md.write_text(
+                    "".join(lines[: index + 1] + ["\n", warning] + lines[insert_at:]),
+                    encoding="utf-8",
+                )
+                return
+
+    preview_md.write_text(warning + content, encoding="utf-8")
+
+
 def preprocess_quarto(
     config: Config,
     force: bool = False,
@@ -40,7 +204,7 @@ def preprocess_quarto(
         single_file: Only process this specific .qmd file (Path object)
 
     Returns:
-        dict mapping .qmd paths to generated .md paths,
+        dict mapping .qmd paths to cached rendered .md paths,
         or empty dict if disabled/unavailable
     """
     if not config.advanced.quarto_enabled:
@@ -68,27 +232,89 @@ def preprocess_quarto(
     quarto_python = config.advanced.quarto_python or None
 
     def _render_source(qmd_file: Path) -> str | None:
-        md_file = qmd_file.with_suffix(".md")
+        cached_md = get_cached_markdown_path(config, qmd_file)
+        if cached_md is None:
+            return None
+
+        sibling_md = qmd_file.with_suffix(".md")
+        sibling_backup = sibling_md.with_name(f"{sibling_md.name}.foliate-bak")
+        # Recover a sibling left stranded by a previous run that crashed between
+        # backing the file up and restoring it (e.g. on SIGKILL/power loss).
+        if sibling_backup.exists() and not sibling_md.exists():
+            sibling_backup.replace(sibling_md)
 
         # Check if render needed: md doesn't exist or qmd is newer
-        needs_render = not md_file.exists() or (
-            qmd_file.stat().st_mtime > md_file.stat().st_mtime
+        needs_render = not cached_md.exists() or (
+            qmd_file.stat().st_mtime > cached_md.stat().st_mtime
         )
 
         if not force and not needs_render:
-            return str(md_file)
+            preview_md = get_preview_markdown_path(config, qmd_file)
+            if preview_md is not None and _preview_is_stale(preview_md, cached_md):
+                _write_preview(config, preview_md, cached_md, qmd_file)
+            return str(cached_md)
 
-        result = render_qmd(
-            qmd_file=qmd_file,
-            pages_dir=pages_path,
-            cache_dir=cache_dir,
-            assets_dir=assets_dir,
-            python=quarto_python,
-            verbose=False,
-        )
-        if result:
-            return str(result)
-        return None
+        # Move existing per-document assets aside rather than deleting them, so
+        # a failed render leaves the previous output (and its links) intact.
+        asset_dir = get_quarto_asset_dir(config, qmd_file)
+        asset_backup: Path | None = None
+        if asset_dir is not None and asset_dir.exists():
+            asset_backup = asset_dir.with_name(f"{asset_dir.name}.foliate-bak")
+            if asset_backup.exists():
+                shutil.rmtree(asset_backup)
+            asset_dir.replace(asset_backup)
+
+        had_sibling = sibling_md.exists()
+        if had_sibling:
+            if sibling_backup.exists():
+                sibling_backup.unlink()
+            sibling_md.replace(sibling_backup)
+
+        result = None
+        succeeded = False
+        try:
+            result = render_qmd(
+                qmd_file=qmd_file,
+                pages_dir=pages_path,
+                cache_dir=cache_dir,
+                assets_dir=assets_dir,
+                python=quarto_python,
+                verbose=False,
+            )
+            if not result:
+                return None
+
+            cached_md.parent.mkdir(parents=True, exist_ok=True)
+            rendered_text = Path(result).read_text(encoding="utf-8")
+            cached_md.write_text(
+                _clean_rendered_markdown(rendered_text, qmd_file),
+                encoding="utf-8",
+            )
+
+            preview_md = get_preview_markdown_path(config, qmd_file)
+            if preview_md is not None:
+                _write_preview(config, preview_md, cached_md, qmd_file)
+
+            succeeded = True
+            return str(cached_md)
+        finally:
+            if result and Path(result).exists():
+                Path(result).unlink()
+            if had_sibling and sibling_backup.exists():
+                sibling_backup.replace(sibling_md)
+            if (
+                asset_dir is not None
+                and asset_backup is not None
+                and asset_backup.exists()
+            ):
+                if succeeded:
+                    shutil.rmtree(asset_backup)
+                else:
+                    # Restore the previous assets the failed render may have
+                    # partially overwritten.
+                    if asset_dir.exists():
+                        shutil.rmtree(asset_dir)
+                    asset_backup.replace(asset_dir)
 
     if single_file:
         # Process single file

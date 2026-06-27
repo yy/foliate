@@ -344,6 +344,7 @@ class AdvancedConfig:
 
     quarto_enabled: bool = False
     quarto_python: str = ""
+    quarto_preview_dir: str = "_private/quarto-preview"
 
 
 @dataclass

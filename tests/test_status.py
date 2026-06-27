@@ -436,8 +436,8 @@ incremental = false
         assert len(report.published_pages) == 1
         assert report.published_pages[0].page_path == "public"
 
-    def test_quarto_status_prefers_rendered_markdown_over_qmd(self, tmp_path):
-        """Status should not double-count a Quarto source and its rendered markdown."""
+    def test_quarto_status_prefers_qmd_over_sibling_markdown(self, tmp_path):
+        """Status should not double-count a Quarto source and sibling markdown."""
         vault_path = tmp_path / "vault"
         vault_path.mkdir()
 
@@ -470,7 +470,7 @@ quarto_enabled = true
 
         assert len(report.pages) == 1
         assert report.pages[0].page_path == "paper"
-        assert report.pages[0].source_file.name == "paper.md"
+        assert report.pages[0].source_file.name == "paper.qmd"
         assert len(report.public_pages) == 1
 
     def test_qmd_only_page_skipped_when_preprocessing_unavailable(

@@ -204,6 +204,9 @@ def iter_content_source_files(
     """Iterate buildable content files, excluding ignored and internal paths."""
     ignored_folders = config.build.ignored_folders
 
+    preview_dir = config.advanced.quarto_preview_dir.strip()
+    preview_parts = Path(preview_dir).parts if preview_dir else ()
+
     for source_file in iter_source_files(vault_path, suffixes):
         if is_path_ignored(source_file, vault_path, ignored_folders):
             continue
@@ -215,6 +218,10 @@ def iter_content_source_files(
 
         # Never treat .foliate internals as content pages.
         if rel_path.parts and rel_path.parts[0] == ".foliate":
+            continue
+
+        # Skip the generated Quarto Obsidian-preview tree.
+        if preview_parts and rel_path.parts[: len(preview_parts)] == preview_parts:
             continue
 
         yield source_file
@@ -276,7 +283,7 @@ def _source_priority(candidate: SourceCandidate) -> tuple[int, str]:
     """Return a stable preference key for duplicate source candidates."""
     suffix = candidate.source_file.suffix
     lowered_suffix = suffix.lower()
-    suffix_priority = {".md": 0, ".qmd": 2}.get(lowered_suffix, 4)
+    suffix_priority = {".qmd": 0, ".md": 1}.get(lowered_suffix, 4)
     case_penalty = 0 if suffix == lowered_suffix else 1
     return suffix_priority + case_penalty, candidate.source_file.as_posix()
 
@@ -524,23 +531,33 @@ def iter_public_md_files(
         for each public markdown file.
     """
     from .logging import debug
+    from .quarto import get_buildable_content_suffixes, get_cached_markdown_path
 
     selected_sources = select_content_sources(
         vault_path,
         config,
-        {".md"},
-        duplicate_label="markdown sources",
+        get_buildable_content_suffixes(config),
+        duplicate_label="content sources",
     )
 
     for source in selected_sources:
-        md_file = source.source_file
+        source_file = source.source_file
         page_path = source.page_path
         content_base_url = source.base_url
 
         if single_page and page_path != single_page:
             continue
 
-        meta, markdown_content = parse_markdown_file(md_file)
+        parse_file = source_file
+        if source_file.suffix.lower() == ".qmd":
+            cached_md = get_cached_markdown_path(config, source_file)
+            if cached_md is None or not cached_md.exists():
+                if on_skipped:
+                    on_skipped(source_file, page_path)
+                continue
+            parse_file = cached_md
+
+        meta, markdown_content = parse_markdown_file(parse_file)
 
         # Check visibility
         if not meta.get("public", False):
@@ -548,10 +565,10 @@ def iter_public_md_files(
                 debug(f"  Building single page (overriding privacy): {page_path}")
             else:
                 if on_skipped:
-                    on_skipped(md_file, page_path)
+                    on_skipped(source_file, page_path)
                 continue
 
-        yield md_file, page_path, content_base_url, meta, markdown_content
+        yield source_file, page_path, content_base_url, meta, markdown_content
 
 
 def _get_output_paths_for_source(

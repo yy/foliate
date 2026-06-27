@@ -101,3 +101,4 @@ author_link = "about/"
 # Requires: uv add foliate[quarto]
 quarto_enabled = false
 quarto_python = ""  # Path to Python interpreter for Quarto, or empty for default
+quarto_preview_dir = "_private/quarto-preview"  # Vault-relative preview markdown output

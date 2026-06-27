@@ -464,9 +464,7 @@ class TestMarkdownConverterCaching:
         assert dummy.reset_calls == 2
         assert dummy.convert_calls == 2
 
-    def test_render_markdown_skips_npx_only_katex_probe(
-        self, monkeypatch, tmp_path
-    ):
+    def test_render_markdown_skips_npx_only_katex_probe(self, monkeypatch, tmp_path):
         """Plain markdown should not probe npx while configuring KaTeX."""
         import markdown_katex.wrapper as katex_wrapper
 
