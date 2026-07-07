@@ -436,8 +436,13 @@ incremental = false
         assert len(report.published_pages) == 1
         assert report.published_pages[0].page_path == "public"
 
-    def test_quarto_status_prefers_qmd_over_sibling_markdown(self, tmp_path):
+    def test_quarto_status_prefers_qmd_over_sibling_markdown(
+        self, tmp_path, monkeypatch
+    ):
         """Status should not double-count a Quarto source and sibling markdown."""
+        monkeypatch.setattr(
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: True
+        )
         vault_path = tmp_path / "vault"
         vault_path.mkdir()
 
