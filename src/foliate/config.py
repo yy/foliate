@@ -666,4 +666,5 @@ class Config:
             "home_page": self.build.home_page,
             "feed_enabled": self.feed.enabled,
             "feed_title": self.feed.title or self.site.name,
+            "search_index_url": self.base_urls["wiki"] + "search.json",
         }

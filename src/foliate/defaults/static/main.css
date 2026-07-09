@@ -427,6 +427,88 @@ nav.top-nav .nav-logo {
 }
 
 /* ============================================================================
+   SEARCH  (opened with "/" or Cmd/Ctrl-K — no visible trigger)
+   ============================================================================ */
+
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 1rem 1rem;
+}
+
+.search-overlay[hidden] {
+  display: none;
+}
+
+.search-modal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--background-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(17, 24, 39, 0.25);
+  overflow: hidden;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  padding: 1rem 1.2rem;
+  font-family: var(--font-family-sans);
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  background: var(--background-primary);
+}
+
+.search-input:focus {
+  outline: none;
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.search-results li {
+  margin: 0;
+  padding: 0;
+}
+
+.search-result {
+  display: block;
+  padding: 0.5rem 1.2rem;
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.search-result:hover,
+.search-result.is-active {
+  background: var(--background-code);
+}
+
+.search-empty {
+  padding: 1rem 1.2rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+body.search-open {
+  overflow: hidden;
+}
+
+/* ============================================================================
    FOOTER
    ============================================================================ */
 
@@ -565,6 +647,10 @@ article .katex {
   nav.top-nav .nav-logo {
     height: 0.9em;
     margin: 0 0.1rem 1px 0;
+  }
+
+  .search-overlay {
+    padding: 5vh 0.6rem 0.6rem;
   }
 
   header h1 {
