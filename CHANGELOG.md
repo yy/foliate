@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 - 2026-07-09
+
+### Added
+- Client-side search overlay in the default theme, backed by the generated `search.json` index. Opens with `/` or Cmd/Ctrl-K (no visible nav trigger); filters published pages by title, tags, and content preview.
+- Quarto `.qmd` render caching to skip unchanged renders on rebuild.
+
+### Changed
+- Build skips the preview tree during full builds.
+- Refactored deploy rsync argument construction, build/watch helpers, and status report formatting.
+- Tightened feed config validation and expanded config handling.
+
 ## 0.7.2 - 2026-03-23
 
 ### Fixed
