@@ -159,7 +159,7 @@ def copy_directory_incremental(
         force_rebuild: If True, always copy everything
         filter_extensions: Optional set of file extensions to include
     """
-    if force_rebuild or not target_dir.exists():
+    if force_rebuild or not target_dir.is_dir():
         if target_dir.exists():
             robust_rmtree(target_dir)
         _copy_directory(src_dir, target_dir, filter_extensions)

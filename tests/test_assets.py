@@ -86,6 +86,17 @@ def test_copy_directory_incremental_removes_unsupported_target_files():
         assert not (target_dir / "leftover.tmp").exists()
 
 
+def test_copy_directory_incremental_replaces_conflicting_empty_target_file(tmp_path):
+    src_dir = tmp_path / "src"
+    target_dir = tmp_path / "target"
+    src_dir.mkdir()
+    target_dir.write_text("not a directory", encoding="utf-8")
+
+    copy_directory_incremental(src_dir, target_dir, force_rebuild=False)
+
+    assert target_dir.is_dir()
+
+
 def test_copy_directory_incremental_skips_matching_tree(monkeypatch, tmp_path):
     src_dir = tmp_path / "src"
     target_dir = tmp_path / "target"
