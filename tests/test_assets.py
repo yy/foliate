@@ -190,3 +190,64 @@ def test_copy_user_assets_ignores_non_directory_assets_path():
         copy_user_assets(vault, build_dir, force_rebuild=False)
 
         assert not (build_dir / "assets").exists()
+
+
+def test_copy_user_assets_skips_excluded_folders():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        vault = Path(tmpdir)
+        build_dir = vault / ".foliate" / "build"
+
+        _write(vault / "assets" / "images" / "kept.png", "kept")
+        _write(vault / "assets" / "drafts" / "draft.png", "draft")
+        _write(vault / "assets" / "images" / "drafts" / "nested-draft.png", "draft")
+
+        copy_user_assets(
+            vault, build_dir, force_rebuild=True, excluded_folders=["drafts"]
+        )
+
+        assert (build_dir / "assets" / "images" / "kept.png").exists()
+        assert not (build_dir / "assets" / "drafts").exists()
+        assert not (build_dir / "assets" / "images" / "drafts").exists()
+
+
+def test_copy_user_assets_removes_previously_deployed_excluded_folder():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        vault = Path(tmpdir)
+        build_dir = vault / ".foliate" / "build"
+
+        _write(vault / "assets" / "images" / "kept.png", "kept")
+        _write(vault / "assets" / "drafts" / "draft.png", "draft")
+
+        # Deployed before the exclusion existed: drafts are in the target.
+        copy_user_assets(vault, build_dir, force_rebuild=True)
+        assert (build_dir / "assets" / "drafts" / "draft.png").exists()
+
+        # Incremental copy with the exclusion active cleans them up.
+        copy_user_assets(
+            vault, build_dir, force_rebuild=False, excluded_folders=["drafts"]
+        )
+        assert (build_dir / "assets" / "images" / "kept.png").exists()
+        assert not (build_dir / "assets" / "drafts").exists()
+
+
+def test_copy_user_assets_excluded_changes_do_not_trigger_refresh():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        vault = Path(tmpdir)
+        build_dir = vault / ".foliate" / "build"
+
+        _write(vault / "assets" / "images" / "kept.png", "kept")
+
+        copy_user_assets(
+            vault, build_dir, force_rebuild=True, excluded_folders=["drafts"]
+        )
+        target_file = build_dir / "assets" / "images" / "kept.png"
+        mtime_before = target_file.stat().st_mtime
+
+        # New/changed draft files must not cause a target rebuild.
+        _write(vault / "assets" / "drafts" / "new-draft.png", "draft")
+        copy_user_assets(
+            vault, build_dir, force_rebuild=False, excluded_folders=["drafts"]
+        )
+
+        assert target_file.stat().st_mtime == mtime_before
+        assert not (build_dir / "assets" / "drafts").exists()

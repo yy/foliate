@@ -1,18 +1,44 @@
 """Tests for quarto module."""
 
-import sys
 import tempfile
-import types
 from pathlib import Path
 from unittest.mock import Mock
 
 from foliate.config import AdvancedConfig, Config
 from foliate.quarto import (
     _clean_rendered_markdown,
+    _resolve_quarto_python,
     _unescape_outside_code,
     get_buildable_content_suffixes,
     preprocess_quarto,
 )
+
+
+def _enable_renderer(monkeypatch, renderer) -> None:
+    monkeypatch.setattr("foliate.quarto.is_quarto_available", lambda: True)
+    monkeypatch.setattr("foliate.quarto.render_qmd", renderer)
+
+
+def test_resolve_quarto_python_prefers_configured_interpreter(tmp_path):
+    config = Config(vault_path=tmp_path)
+    config.advanced.quarto_python = "/custom/python"
+
+    assert _resolve_quarto_python(config) == "/custom/python"
+
+
+def test_resolve_quarto_python_detects_vault_virtualenv(tmp_path):
+    python = tmp_path / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    config = Config(vault_path=tmp_path)
+
+    assert _resolve_quarto_python(config) == str(python.absolute())
+
+
+def test_resolve_quarto_python_returns_none_without_interpreter(tmp_path):
+    config = Config(vault_path=tmp_path)
+
+    assert _resolve_quarto_python(config) is None
 
 
 class TestPreprocessQuarto:
@@ -37,18 +63,17 @@ class TestPreprocessQuarto:
 
         assert result == {}
 
-    def test_handles_missing_quarto_prerender(self):
-        """Should gracefully handle when quarto-prerender is not installed."""
+    def test_handles_missing_quarto_cli(self, monkeypatch):
+        """Should gracefully handle when the Quarto CLI is unavailable."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = Config()
             config.advanced = AdvancedConfig(quarto_enabled=True)
             config.vault_path = Path(tmpdir)
+            monkeypatch.setattr("foliate.quarto.is_quarto_available", lambda: False)
 
-            # This will either succeed (if quarto-prerender is installed)
-            # or return empty dict (if not installed or quarto not available)
             result = preprocess_quarto(config)
 
-            assert isinstance(result, dict)
+            assert result == {}
 
     def test_processes_vault_with_no_qmd_files(self):
         """Should return empty dict when no .qmd files exist."""
@@ -110,12 +135,8 @@ class TestPreprocessQuarto:
         generated_md = tmp_path / "paper.md"
         generated_md.write_text("# Existing generated markdown")
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
-        fake_module.process_all = lambda **_kwargs: {}
         render_qmd = Mock(name="render_qmd")
-        fake_module.render_qmd = render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, render_qmd)
 
         result = preprocess_quarto(config, single_file=qmd_file)
 
@@ -137,11 +158,8 @@ class TestPreprocessQuarto:
             generated_md.write_text("---\ntitle: Paper\n---\n# Rendered\n")
             return generated_md
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
         render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
-        fake_module.render_qmd = render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, render_qmd)
 
         result = preprocess_quarto(config)
 
@@ -170,11 +188,8 @@ class TestPreprocessQuarto:
             generated_md.write_text("---\ntitle: Paper\n---\n# Rendered\n")
             return generated_md
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
         render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
-        fake_module.render_qmd = render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, render_qmd)
 
         result = preprocess_quarto(config)
 
@@ -201,10 +216,7 @@ class TestPreprocessQuarto:
             )
             return generated_md
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
-        fake_module.render_qmd = fake_render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, fake_render_qmd)
 
         result = preprocess_quarto(config, single_file=qmd_file)
 
@@ -246,11 +258,8 @@ class TestPreprocessQuarto:
         cached_md.write_text("---\ntitle: Paper\n---\nRendered\n", encoding="utf-8")
         preview_md = tmp_path / "_private" / "quarto-preview" / "paper.md"
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
         render_qmd = Mock(name="render_qmd")
-        fake_module.render_qmd = render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, render_qmd)
 
         result = preprocess_quarto(config, single_file=qmd_file)
 
@@ -280,11 +289,8 @@ class TestPreprocessQuarto:
         sibling_backup = tmp_path / "paper.md.foliate-bak"
         sibling_backup.write_text("USER CONTENT", encoding="utf-8")
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
         render_qmd = Mock(name="render_qmd")
-        fake_module.render_qmd = render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, render_qmd)
 
         preprocess_quarto(config, single_file=qmd_file)
 
@@ -312,10 +318,7 @@ class TestPreprocessQuarto:
             (asset_dir / "new.png").write_text("new", encoding="utf-8")
             return None
 
-        fake_module = types.ModuleType("quarto_prerender")
-        fake_module.is_quarto_available = lambda: True
-        fake_module.render_qmd = fake_render_qmd
-        monkeypatch.setitem(sys.modules, "quarto_prerender", fake_module)
+        _enable_renderer(monkeypatch, fake_render_qmd)
 
         result = preprocess_quarto(config, single_file=qmd_file)
 

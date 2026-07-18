@@ -24,6 +24,10 @@ default_og_image = "/assets/images/default-preview.png"
 # Files in these folders are never processed, regardless of frontmatter
 ignored_folders = ["_private"]
 
+# Folder names under assets/ (matched at any depth) that are never copied
+# to the build or deploy — useful for local-only draft figures
+# excluded_asset_folders = ["drafts"]
+
 # Where to redirect the site root (/)
 # This page should exist in _homepage/ with public: true
 home_redirect = "about"
@@ -98,7 +102,7 @@ author_link = "about/"
 
 [advanced]
 # Quarto preprocessing (for .qmd files)
-# Requires: uv add foliate[quarto]
+# Requires the Quarto CLI; Python documents also need a working Jupyter kernel.
 quarto_enabled = false
-quarto_python = ""  # Path to Python interpreter for Quarto, or empty for default
+quarto_python = ""  # Optional override; empty auto-detects the vault's .venv
 quarto_preview_dir = "_private/quarto-preview"  # Vault-relative preview markdown output

@@ -274,9 +274,20 @@ def _iter_deploy_source_files(config: Config) -> Iterator[Path]:
     if not vault_path:
         return
 
+    assets_dir = vault_path / "assets"
+    excluded_asset_folders = config.build.excluded_asset_folders
+    asset_files = (
+        path
+        for path in _iter_files(assets_dir, SUPPORTED_ASSET_EXTENSIONS)
+        if not any(
+            part in excluded_asset_folders
+            for part in path.relative_to(assets_dir).parts[:-1]
+        )
+    )
+
     for paths in (
         iter_content_source_files(vault_path, config, {".md", ".qmd"}),
-        _iter_files(vault_path / "assets", SUPPORTED_ASSET_EXTENSIONS),
+        asset_files,
         _iter_existing_file(vault_path / ".foliate" / "config.toml"),
         _iter_files(get_user_templates_dir(vault_path)),
         _iter_files(get_user_static_dir(vault_path)),

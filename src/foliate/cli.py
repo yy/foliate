@@ -148,6 +148,7 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
     """Build the static site."""
     from .build import build as do_build
     from .logging import setup_logging
+    from .published_assets import AssetPublicationError
 
     # Initialize logging based on verbosity
     setup_logging(verbose=verbose)
@@ -166,10 +167,13 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
         )
         return
 
-    result = do_build(
-        config=config,
-        force_rebuild=force,
-    )
+    try:
+        result = do_build(
+            config=config,
+            force_rebuild=force,
+        )
+    except AssetPublicationError as error:
+        _exit_with_error(str(error))
 
     if result == 0:
         _exit_with_error("No public pages found to build")
@@ -259,6 +263,62 @@ def status(verbose: bool):
     report = scan_status(config)
     output = format_status_report(report, verbose=verbose)
     click.echo(output)
+
+
+@main.command("publish-assets")
+@click.argument("page", type=click.Path(path_type=Path))
+@click.option(
+    "--dry-run", "-n", is_flag=True, help="Render and show uploads without executing"
+)
+@click.option("--force", "-f", is_flag=True, help="Upload unchanged assets too")
+@click.option(
+    "--set-published",
+    is_flag=True,
+    help="Set published: true and restore it if publication fails",
+)
+def publish_assets(page: Path, dry_run: bool, force: bool, set_published: bool):
+    """Publish generated assets for one explicitly published QMD PAGE."""
+    from .published_assets import (
+        AssetPublicationError,
+        publish_page_assets,
+        set_page_published,
+    )
+    from .quarto import quarto_render_lock
+
+    config = _load_config_or_exit()
+    vault = config.vault_path or Path.cwd()
+    qmd_file = page if page.is_absolute() else vault / page
+    if qmd_file.suffix == "":
+        qmd_file = qmd_file.with_suffix(".qmd")
+
+    original_content: str | None = None
+    with quarto_render_lock(config):
+        try:
+            if set_published:
+                original_content = set_page_published(qmd_file)
+            result = publish_page_assets(
+                config,
+                qmd_file,
+                dry_run=dry_run,
+                force=force,
+            )
+        except AssetPublicationError as error:
+            if original_content is not None:
+                qmd_file.write_text(original_content, encoding="utf-8")
+            _exit_with_error(str(error))
+        except Exception:
+            if original_content is not None:
+                qmd_file.write_text(original_content, encoding="utf-8")
+            raise
+
+        if dry_run and original_content is not None:
+            qmd_file.write_text(original_content, encoding="utf-8")
+
+    action = "Would upload" if dry_run else "Uploaded"
+    click.echo(
+        f"{action} {result.uploaded} of {result.discovered} assets "
+        f"({result.unchanged} unchanged)"
+    )
 
 
 @main.command()

@@ -37,9 +37,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-quarto = [
-    "quarto-prerender>=0.1",
-]
 dev = [
     "mypy>=1.18",
     "pytest>=7.0",
@@ -86,7 +83,6 @@ module = [
     "jinja2",
     "markdown",
     "markdown.preprocessors",
-    "quarto_prerender",
     "watchdog.events",
     "watchdog.observers",
 ]

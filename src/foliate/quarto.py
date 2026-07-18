@@ -1,22 +1,58 @@
 """Quarto preprocessing for foliate.
 
-Converts .qmd files to cached .md using quarto-prerender before the main build.
+Converts .qmd files to cached .md before the main build.
 """
 
 import shutil
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
+from typing import Iterator
 
 from .config import Config
 from .logging import debug
+from .quarto_renderer import is_quarto_available, render_qmd
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows falls back to process locking
+    fcntl = None  # type: ignore[assignment]
+
+
+_RENDER_THREAD_LOCK = threading.RLock()
+_RENDER_LOCK_DEPTH: ContextVar[int] = ContextVar("quarto_render_lock_depth", default=0)
+
+
+@contextmanager
+def quarto_render_lock(config: Config) -> Iterator[None]:
+    """Serialize Quarto and publication work across threads and processes."""
+    with _RENDER_THREAD_LOCK:
+        depth = _RENDER_LOCK_DEPTH.get()
+        if depth:
+            token = _RENDER_LOCK_DEPTH.set(depth + 1)
+            try:
+                yield
+            finally:
+                _RENDER_LOCK_DEPTH.reset(token)
+            return
+
+        lock_path = config.get_cache_dir() / "quarto" / "render.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            token = _RENDER_LOCK_DEPTH.set(1)
+            try:
+                yield
+            finally:
+                _RENDER_LOCK_DEPTH.reset(token)
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def is_quarto_preprocessing_available() -> bool:
     """Return whether Quarto preprocessing can run in this environment."""
-    try:
-        from quarto_prerender import is_quarto_available
-    except ImportError:
-        return False
-
     return bool(is_quarto_available())
 
 
@@ -61,10 +97,15 @@ def get_preview_markdown_path(config: Config, qmd_file: Path) -> Path | None:
 
 
 def get_quarto_asset_dir(config: Config, qmd_file: Path) -> Path | None:
-    """Return the public asset directory for a Quarto source file."""
+    """Return the generated asset directory for a Quarto source file."""
     vault_path = config.vault_path
     if not vault_path:
         return None
+
+    from .published_assets import get_managed_asset_dir, is_managed_page
+
+    if is_managed_page(qmd_file):
+        return get_managed_asset_dir(config, qmd_file)
 
     try:
         rel_path = qmd_file.resolve().relative_to(vault_path.resolve())
@@ -76,6 +117,26 @@ def get_quarto_asset_dir(config: Config, qmd_file: Path) -> Path | None:
     if parent == Path("."):
         return assets_dir / qmd_file.stem
     return assets_dir / parent / qmd_file.stem
+
+
+def _resolve_quarto_python(config: Config) -> str | None:
+    """Return the configured interpreter or a vault-local virtualenv Python."""
+    if config.advanced.quarto_python:
+        return config.advanced.quarto_python
+
+    if config.vault_path is None:
+        return None
+
+    virtualenv = config.vault_path / ".venv"
+    for candidate in (
+        virtualenv / "bin" / "python",
+        virtualenv / "Scripts" / "python.exe",
+    ):
+        if candidate.is_file():
+            # Do not resolve the symlink: Python uses its venv path to discover
+            # the environment's installed packages.
+            return str(candidate.absolute())
+    return None
 
 
 def _is_metadata_line(line: str) -> bool:
@@ -195,8 +256,10 @@ def preprocess_quarto(
     config: Config,
     force: bool = False,
     single_file: Path | None = None,
+    *,
+    validate_published_assets: bool = True,
 ) -> dict[str, str]:
-    """Preprocess .qmd files to .md using quarto-prerender.
+    """Preprocess .qmd files to cached Markdown using Quarto.
 
     Args:
         config: Foliate configuration
@@ -210,12 +273,6 @@ def preprocess_quarto(
     if not config.advanced.quarto_enabled:
         return {}
 
-    try:
-        from quarto_prerender import is_quarto_available, render_qmd
-    except ImportError:
-        debug("quarto-prerender not installed, skipping .qmd preprocessing")
-        return {}
-
     if not is_quarto_available():
         debug("Quarto CLI not found, skipping .qmd preprocessing")
         return {}
@@ -226,10 +283,7 @@ def preprocess_quarto(
 
     pages_path = vault_path.resolve()
     cache_dir = config.get_cache_dir() / "quarto"
-    assets_dir = pages_path / "assets" / "quarto"
-
-    # quarto_python is already expanded by config loading
-    quarto_python = config.advanced.quarto_python or None
+    quarto_python = _resolve_quarto_python(config)
 
     def _render_source(qmd_file: Path) -> str | None:
         cached_md = get_cached_markdown_path(config, qmd_file)
@@ -249,6 +303,17 @@ def preprocess_quarto(
         )
 
         if not force and not needs_render:
+            from .published_assets import apply_published_asset_urls
+
+            content = cached_md.read_text(encoding="utf-8")
+            prepared = apply_published_asset_urls(
+                config,
+                qmd_file,
+                content,
+                require_current=validate_published_assets,
+            )
+            if prepared != content:
+                cached_md.write_text(prepared, encoding="utf-8")
             preview_md = get_preview_markdown_path(config, qmd_file)
             if preview_md is not None and _preview_is_stale(preview_md, cached_md):
                 _write_preview(config, preview_md, cached_md, qmd_file)
@@ -273,11 +338,24 @@ def preprocess_quarto(
         result = None
         succeeded = False
         try:
+            from .published_assets import (
+                apply_published_asset_urls,
+                get_managed_asset_root,
+                is_managed_page,
+                is_published_page,
+                load_publisher_config,
+            )
+
+            if is_managed_page(qmd_file):
+                publisher = load_publisher_config(config)
+                render_assets_dir = get_managed_asset_root(config, publisher)
+            else:
+                render_assets_dir = pages_path / "assets" / "quarto"
             result = render_qmd(
                 qmd_file=qmd_file,
                 pages_dir=pages_path,
                 cache_dir=cache_dir,
-                assets_dir=assets_dir,
+                assets_dir=render_assets_dir,
                 python=quarto_python,
                 verbose=False,
             )
@@ -286,14 +364,30 @@ def preprocess_quarto(
 
             cached_md.parent.mkdir(parents=True, exist_ok=True)
             rendered_text = Path(result).read_text(encoding="utf-8")
+            cleaned_text = _clean_rendered_markdown(rendered_text, qmd_file)
+            cleaned_text = apply_published_asset_urls(
+                config,
+                qmd_file,
+                cleaned_text,
+                require_current=validate_published_assets,
+            )
             cached_md.write_text(
-                _clean_rendered_markdown(rendered_text, qmd_file),
+                cleaned_text,
                 encoding="utf-8",
             )
 
             preview_md = get_preview_markdown_path(config, qmd_file)
             if preview_md is not None:
                 _write_preview(config, preview_md, cached_md, qmd_file)
+
+            if (
+                validate_published_assets
+                and is_managed_page(qmd_file)
+                and is_published_page(qmd_file)
+                and asset_dir is not None
+                and asset_dir.exists()
+            ):
+                shutil.rmtree(asset_dir)
 
             succeeded = True
             return str(cached_md)
@@ -323,7 +417,8 @@ def preprocess_quarto(
             debug(f"Quarto source missing, skipping: {qmd_file}")
             return {}
 
-        result = _render_source(qmd_file)
+        with quarto_render_lock(config):
+            result = _render_source(qmd_file)
         if result:
             return {str(qmd_file): result}
         return {}
@@ -338,7 +433,8 @@ def preprocess_quarto(
         duplicate_label="Quarto sources",
     )
     for source in selected_sources:
-        result = _render_source(source.source_file)
+        with quarto_render_lock(config):
+            result = _render_source(source.source_file)
         if result:
             results[str(source.source_file)] = result
 

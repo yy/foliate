@@ -1095,7 +1095,12 @@ def build(
 
     # Copy assets
     copy_static_assets(vault_path, build_dir, force_rebuild)
-    copy_user_assets(vault_path, build_dir, force_rebuild)
+    copy_user_assets(
+        vault_path,
+        build_dir,
+        force_rebuild,
+        excluded_folders=config.build.excluded_asset_folders,
+    )
 
     # Print build status
     timestamp = datetime.now().strftime("%H:%M:%S")

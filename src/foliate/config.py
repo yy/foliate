@@ -308,6 +308,8 @@ class BuildConfig:
     """Build-related configuration."""
 
     ignored_folders: list[str] = field(default_factory=lambda: ["_private"])
+    # Folder names under assets/ (any depth) never copied to the build/deploy
+    excluded_asset_folders: list[str] = field(default_factory=list)
     home_redirect: str = "about"
     homepage_dir: str = "_homepage"
     wiki_prefix: str = "wiki"  # URL prefix for wiki content (e.g., /wiki/PageName/)
@@ -466,6 +468,11 @@ class Config:
                 "ignored_folders": _require_string_list_value(
                     section="build",
                     field_name="ignored_folders",
+                    config_path=config_path,
+                ),
+                "excluded_asset_folders": _require_string_list_value(
+                    section="build",
+                    field_name="excluded_asset_folders",
                     config_path=config_path,
                 ),
                 "wiki_prefix": _require_string_value(

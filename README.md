@@ -186,22 +186,41 @@ See [docs/customization.md](docs/customization.md) for the full guide, including
   - [Adding analytics](docs/examples/analytics.md)
   - [Adding a sidebar](docs/examples/sidebar.md)
 
-## Quarto Support (Optional)
+## Quarto Support
 
-Foliate can preprocess `.qmd` files (Quarto markdown) to `.md` before building:
-
-```bash
-# Install with quarto support
-pip install foliate[quarto]
-```
+Foliate can preprocess `.qmd` files (Quarto markdown) to `.md` before building.
+Install the [Quarto CLI](https://quarto.org/docs/get-started/) separately. Python
+documents also need a working Jupyter kernel in the environment where Foliate
+runs.
 
 Configure in `.foliate/config.toml`:
 
 ```toml
 [advanced]
 quarto_enabled = true
-quarto_python = "/path/to/python"  # Optional: Python for Quarto
+quarto_python = ""  # Optional override; empty auto-detects the vault's .venv
 ```
+
+### Publishing generated assets
+
+QMD pages can keep rendered figures in ignored draft storage and publish them through a configurable command adapter. Opt a page in with `publish_assets: true`, then configure `.foliate/assets.toml`:
+
+```toml
+[publisher]
+command = ["aws", "s3", "cp", "{source}", "s3://bucket/{key}"]
+url_template = "https://cdn.example/{key}"
+key_template = "{page_slug}/{filename}"
+draft_root = "assets/drafts/quarto"
+manifest = ".foliate/published-assets.json"
+```
+
+Normal build and watch commands never invoke the uploader. To set the page's `published` field and publish its assets as one step, run:
+
+```bash
+foliate publish-assets "Page.qmd" --set-published
+```
+
+The command sets `published: true` before it invokes the uploader and restores the original source if rendering or upload fails. It force-renders the page, uploads changed files, records their hashes and public URLs in the manifest, rewrites the cached Markdown, and removes the local draft directory. Without `--set-published`, it refuses an unpublished page. A later build fails if a rendered asset differs from its manifest entry; run `publish-assets` again to update it. Use `--dry-run` to render and report the pending uploads without invoking the command adapter or retaining the frontmatter change.
 
 ## Development / CI
 

@@ -55,8 +55,17 @@ class FoliateEventHandler(FileSystemEventHandler):
             return True
 
         path_parts = self._get_relative_path_parts(normalized_path)
-        return any(
+        if any(
             folder in path_parts[:-1] for folder in self.config.build.ignored_folders
+        ):
+            return True
+
+        excluded_asset_folders = self.config.build.excluded_asset_folders
+        return bool(
+            excluded_asset_folders
+            and path_parts
+            and path_parts[0] == "assets"
+            and any(folder in path_parts[1:-1] for folder in excluded_asset_folders)
         )
 
     def _should_track_path(self, src_path: str) -> bool:

@@ -45,19 +45,32 @@ def _should_copy_file(path: Path, filter_extensions: set[str] | None) -> bool:
     return not filter_extensions or path.suffix.lower() in filter_extensions
 
 
+def _is_excluded(rel_path: Path, excluded_folders: list[str] | None) -> bool:
+    """Return whether a relative path sits inside an excluded folder."""
+    if not excluded_folders:
+        return False
+    return any(part in excluded_folders for part in rel_path.parts[:-1])
+
+
 def _copy_directory(
-    src_dir: Path, target_dir: Path, filter_extensions: set[str] | None = None
+    src_dir: Path,
+    target_dir: Path,
+    filter_extensions: set[str] | None = None,
+    excluded_folders: list[str] | None = None,
 ) -> None:
     """Copy a directory tree while honoring optional extension filtering."""
 
     def _ignore(directory: str, entries: list[str]) -> list[str]:
         directory_path = Path(directory)
-        return [
-            entry
-            for entry in entries
-            if (directory_path / entry).is_file()
-            and not _should_copy_file(directory_path / entry, filter_extensions)
-        ]
+        ignored = []
+        for entry in entries:
+            entry_path = directory_path / entry
+            if entry_path.is_dir():
+                if excluded_folders and entry in excluded_folders:
+                    ignored.append(entry)
+            elif not _should_copy_file(entry_path, filter_extensions):
+                ignored.append(entry)
+        return ignored
 
     shutil.copytree(src_dir, target_dir, ignore=_ignore)
 
@@ -65,22 +78,27 @@ def _copy_directory(
 def _iter_filtered_files(
     root_dir: Path,
     filter_extensions: set[str] | None = None,
+    excluded_folders: list[str] | None = None,
 ) -> Iterator[Path]:
     """Yield regular files below a directory under the active filter."""
     for path in root_dir.glob("**/*"):
-        if path.is_file() and _should_copy_file(path, filter_extensions):
-            yield path
+        if not path.is_file() or not _should_copy_file(path, filter_extensions):
+            continue
+        if _is_excluded(path.relative_to(root_dir), excluded_folders):
+            continue
+        yield path
 
 
 def _source_tree_needs_refresh(
     src_dir: Path,
     target_dir: Path,
     filter_extensions: set[str] | None = None,
+    excluded_folders: list[str] | None = None,
 ) -> tuple[bool, set[Path]]:
     """Return whether source changes require a refresh and the expected files."""
     source_files: set[Path] = set()
 
-    for src_file in _iter_filtered_files(src_dir, filter_extensions):
+    for src_file in _iter_filtered_files(src_dir, filter_extensions, excluded_folders):
         rel_path = src_file.relative_to(src_dir)
         source_files.add(rel_path)
 
@@ -115,12 +133,14 @@ def _directory_copy_needs_refresh(
     src_dir: Path,
     target_dir: Path,
     filter_extensions: set[str] | None = None,
+    excluded_folders: list[str] | None = None,
 ) -> bool:
     """Return whether incremental copying should rebuild the target tree."""
     source_needs_refresh, source_files = _source_tree_needs_refresh(
         src_dir,
         target_dir,
         filter_extensions,
+        excluded_folders,
     )
     if source_needs_refresh:
         return True
@@ -150,6 +170,7 @@ def copy_directory_incremental(
     target_dir: Path,
     force_rebuild: bool,
     filter_extensions: set[str] | None = None,
+    excluded_folders: list[str] | None = None,
 ) -> None:
     """Copy a directory to build output with incremental update support.
 
@@ -158,16 +179,19 @@ def copy_directory_incremental(
         target_dir: Target directory to copy to
         force_rebuild: If True, always copy everything
         filter_extensions: Optional set of file extensions to include
+        excluded_folders: Optional folder names (any depth) to skip entirely
     """
     if force_rebuild or not target_dir.is_dir():
         if target_dir.exists():
             robust_rmtree(target_dir)
-        _copy_directory(src_dir, target_dir, filter_extensions)
+        _copy_directory(src_dir, target_dir, filter_extensions, excluded_folders)
         return
 
-    if _directory_copy_needs_refresh(src_dir, target_dir, filter_extensions):
+    if _directory_copy_needs_refresh(
+        src_dir, target_dir, filter_extensions, excluded_folders
+    ):
         robust_rmtree(target_dir)
-        _copy_directory(src_dir, target_dir, filter_extensions)
+        _copy_directory(src_dir, target_dir, filter_extensions, excluded_folders)
 
 
 def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> None:
@@ -193,13 +217,19 @@ def copy_static_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -
         shutil.copytree(user_static, bundled_static, dirs_exist_ok=True)
 
 
-def copy_user_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> None:
+def copy_user_assets(
+    vault_path: Path,
+    build_dir: Path,
+    force_rebuild: bool,
+    excluded_folders: list[str] | None = None,
+) -> None:
     """Copy user assets from vault to build directory.
 
     Args:
         vault_path: Path to the vault directory
         build_dir: Path to the build output directory
         force_rebuild: If True, always copy everything
+        excluded_folders: Optional folder names (any depth) to skip entirely
     """
     assets_src = vault_path / "assets"
     if assets_src.is_dir():
@@ -208,4 +238,5 @@ def copy_user_assets(vault_path: Path, build_dir: Path, force_rebuild: bool) -> 
             build_dir / "assets",
             force_rebuild,
             filter_extensions=SUPPORTED_ASSET_EXTENSIONS,
+            excluded_folders=excluded_folders,
         )

@@ -113,7 +113,7 @@ Generates `/feed.xml` for published wiki content. Distinguishes between:
 Configure via `[feed]` section in config. Excludes `_homepage/` content.
 
 ### Quarto Support
-Optional preprocessing of `.qmd` files to `.md` using `quarto-prerender`.
+Built-in preprocessing of `.qmd` files to `.md` through the Quarto CLI.
 Enabled via `[advanced] quarto_enabled = true` in config.
 
 ### Deployment
@@ -171,7 +171,7 @@ window = 30          # Days to include in feed
 
 [advanced]
 quarto_enabled = false
-quarto_python = ""  # Optional: path to Python for Quarto
+quarto_python = ""  # Optional override; empty auto-detects the vault's .venv
 ```
 
 ## Development Commands
@@ -260,8 +260,8 @@ uv publish
 - `mdx-wikilink-plus` - Wiki-style links
 - `mdx-linkify` - Auto-link URLs
 
-### Optional (Quarto)
-- `quarto-prerender` - Quarto .qmd preprocessing
+### External (Quarto)
+- Quarto CLI - `.qmd` rendering; Python documents also need a Jupyter kernel
 
 ## Key Design Decisions
 
