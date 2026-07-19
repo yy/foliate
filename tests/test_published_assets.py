@@ -1,248 +1,228 @@
-"""Tests for publication-gated generated assets."""
+"""Tests for optional remote publication of generated assets."""
 
-import json
 from pathlib import Path
-from unittest.mock import Mock, patch
+from subprocess import CalledProcessError
+from unittest.mock import Mock
 
 import pytest
-from click.testing import CliRunner
 
-from foliate.cli import main
-from foliate.config import AdvancedConfig, Config
+from foliate.config import Config
 from foliate.published_assets import (
     AssetPublicationError,
-    PublishResult,
-    apply_published_asset_urls,
-    get_managed_asset_dir,
-    is_published_page,
+    PublisherConfig,
+    generated_asset_key,
+    get_generated_asset_root,
     load_publisher_config,
-    publish_page_assets,
+    prepare_published_build,
+    public_asset_url,
 )
-from foliate.quarto import get_cached_markdown_path, get_quarto_asset_dir
 
 
-def _config(tmp_path: Path) -> Config:
+def _config(tmp_path: Path, *, publisher: bool = True) -> Config:
     foliate_dir = tmp_path / ".foliate"
     foliate_dir.mkdir()
     config_path = foliate_dir / "config.toml"
     config_path.write_text("[advanced]\nquarto_enabled = true\n", encoding="utf-8")
-    (foliate_dir / "assets.toml").write_text(
-        """\
+    if publisher:
+        (foliate_dir / "assets.toml").write_text(
+            """\
 [publisher]
-command = ["uploader", "{source}", "{key}"]
-url_template = "https://cdn.example/{key}"
-key_template = "{page_slug}/{filename}"
+command = ["uploader", "{staging_prefix_dir}"]
+public_base_url = "https://cdn.example/public/imgs"
+key_prefix = "quarto"
 """,
+            encoding="utf-8",
+        )
+    return Config.load(config_path)
+
+
+def _build_with_assets(config: Config) -> tuple[Path, Path, Path]:
+    build_dir = config.get_build_dir()
+    asset = build_dir / "assets" / "quarto" / "My Page" / "plot one.png"
+    asset.parent.mkdir(parents=True)
+    asset.write_bytes(b"plot")
+    unused = build_dir / "assets" / "quarto" / "Private" / "unused.png"
+    unused.parent.mkdir(parents=True)
+    unused.write_bytes(b"private")
+    html = build_dir / "wiki" / "My-Page" / "index.html"
+    html.parent.mkdir(parents=True)
+    html.write_text(
+        '<meta content="https://example.com/assets/quarto/My Page/plot one.png">\n'
+        '<img src="/assets/quarto/My%20Page/plot%20one.png">',
         encoding="utf-8",
     )
-    config = Config.load(config_path)
-    config.advanced = AdvancedConfig(quarto_enabled=True)
-    return config
+    return build_dir, asset, html
 
 
-def _page(tmp_path: Path, *, published: bool) -> Path:
-    page = tmp_path / "My Page.qmd"
-    page.write_text(
-        "---\n"
-        "title: My Page\n"
-        f"published: {'true' if published else 'false'}\n"
-        "publish_assets: true\n"
-        "---\n",
-        encoding="utf-8",
-    )
-    return page
+def test_local_sites_keep_generated_assets_in_vault(tmp_path):
+    config = _config(tmp_path, publisher=False)
+
+    assert get_generated_asset_root(config) == tmp_path / "assets" / "quarto"
+
+    build_dir = tmp_path / ".foliate" / "build"
+    result = prepare_published_build(config, build_dir)
+    assert result.path == build_dir
+    assert result.asset_count == 0
 
 
-def test_managed_quarto_assets_use_draft_root(tmp_path):
+def test_configured_sites_keep_generated_assets_in_cache(tmp_path):
     config = _config(tmp_path)
-    page = _page(tmp_path, published=False)
 
-    expected = tmp_path / "assets" / "drafts" / "quarto" / "My Page"
-
-    assert get_managed_asset_dir(config, page) == expected
-    assert get_quarto_asset_dir(config, page) == expected
-
-
-def test_publish_refuses_unpublished_page(tmp_path):
-    config = _config(tmp_path)
-    page = _page(tmp_path, published=False)
-
-    with pytest.raises(AssetPublicationError, match="published: true"):
-        publish_page_assets(config, page)
-
-
-def test_publish_uploads_rewrites_manifest_and_removes_drafts(
-    tmp_path, monkeypatch
-):
-    config = _config(tmp_path)
-    page = _page(tmp_path, published=True)
-    asset_dir = get_managed_asset_dir(config, page)
-    assert asset_dir is not None
-    cached = get_cached_markdown_path(config, page)
-    assert cached is not None
-
-    def fake_preprocess(*_args, **_kwargs):
-        asset_dir.mkdir(parents=True)
-        (asset_dir / "plot.png").write_bytes(b"plot")
-        cached.parent.mkdir(parents=True)
-        cached.write_text(
-            "![](/assets/drafts/quarto/My%20Page/plot.png)\n", encoding="utf-8"
-        )
-        return {str(page.resolve()): str(cached)}
-
-    monkeypatch.setattr("foliate.quarto.preprocess_quarto", fake_preprocess)
-    upload = Mock()
-    monkeypatch.setattr("foliate.published_assets.subprocess.run", upload)
-
-    result = publish_page_assets(config, page)
-
-    assert result.discovered == 1
-    assert result.uploaded == 1
-    assert result.unchanged == 0
-    upload.assert_called_once()
-    command = upload.call_args.args[0]
-    assert command[0] == "uploader"
-    assert command[2] == "My-Page/plot.png"
-    assert cached.read_text(encoding="utf-8") == (
-        "![](https://cdn.example/My-Page/plot.png)\n"
-    )
-    assert not asset_dir.exists()
-
-    manifest = json.loads(
-        (tmp_path / ".foliate" / "published-assets.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    entry = manifest["assets"][
-        "assets/drafts/quarto/My Page/plot.png"
-    ]
-    assert entry["key"] == "My-Page/plot.png"
-    assert entry["url"] == "https://cdn.example/My-Page/plot.png"
-
-
-def test_build_rewrite_rejects_changed_generated_asset(tmp_path):
-    config = _config(tmp_path)
-    page = _page(tmp_path, published=True)
-    asset_dir = get_managed_asset_dir(config, page)
-    assert asset_dir is not None
-    asset_dir.mkdir(parents=True)
-    asset = asset_dir / "plot.png"
-    asset.write_bytes(b"new plot")
-    relative = "assets/drafts/quarto/My Page/plot.png"
-    manifest = {
-        "version": 1,
-        "assets": {
-            relative: {
-                "page": "My Page",
-                "sha256": "old-hash",
-                "key": "My-Page/plot.png",
-                "url": "https://cdn.example/My-Page/plot.png",
-            }
-        },
-    }
-    (tmp_path / ".foliate" / "published-assets.json").write_text(
-        json.dumps(manifest), encoding="utf-8"
+    assert get_generated_asset_root(config) == (
+        tmp_path / ".foliate" / "cache" / "quarto" / "assets"
     )
 
-    with pytest.raises(AssetPublicationError, match="generated asset changed"):
-        apply_published_asset_urls(
-            config,
-            page,
-            "![](/assets/drafts/quarto/My%20Page/plot.png)\n",
-        )
 
-
-def test_load_publisher_config_requires_command_array(tmp_path):
+def test_load_publisher_config_requires_staging_command(tmp_path):
     config = _config(tmp_path)
     (tmp_path / ".foliate" / "assets.toml").write_text(
-        '[publisher]\ncommand = "upload"\nurl_template = "https://x/{key}"\n',
+        "[publisher]\n"
+        'command = ["upload"]\n'
+        'public_base_url = "https://cdn.example"\n',
         encoding="utf-8",
     )
 
-    with pytest.raises(AssetPublicationError, match="array of strings"):
+    with pytest.raises(AssetPublicationError, match="staging_dir"):
         load_publisher_config(config)
 
 
-def test_cli_publish_assets_reports_unpublished_gate(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("public_base_url", '"s3://bucket/path"', "HTTP"),
+        ("key_prefix", '"quarto/../private"', "safe URL path"),
+        ("key_prefix", '"quarto\\\\figures"', "safe URL path"),
+    ],
+)
+def test_load_publisher_config_rejects_unsafe_urls_and_keys(
+    tmp_path, field, value, message
+):
     config = _config(tmp_path)
-    page = _page(tmp_path, published=False)
-    monkeypatch.chdir(tmp_path)
+    values = {
+        "public_base_url": '"https://cdn.example/assets"',
+        "key_prefix": '"quarto"',
+    }
+    values[field] = value
+    (tmp_path / ".foliate" / "assets.toml").write_text(
+        "[publisher]\n"
+        'command = ["upload", "{staging_dir}"]\n'
+        f"public_base_url = {values['public_base_url']}\n"
+        f"key_prefix = {values['key_prefix']}\n",
+        encoding="utf-8",
+    )
 
-    result = CliRunner().invoke(main, ["publish-assets", page.name])
-
-    assert result.exit_code == 1
-    assert "set 'published: true' first" in result.output
-    assert not (config.get_foliate_dir() / "published-assets.json").exists()
-
-
-def test_cli_build_reports_manifest_error_without_traceback(tmp_path, monkeypatch):
-    _config(tmp_path)
-    monkeypatch.chdir(tmp_path)
-
-    with patch(
-        "foliate.build.build",
-        side_effect=AssetPublicationError("generated asset changed"),
-    ):
-        result = CliRunner().invoke(main, ["build"])
-
-    assert result.exit_code == 1
-    assert result.output == "Error: generated asset changed\n"
+    with pytest.raises(AssetPublicationError, match=message):
+        load_publisher_config(config)
 
 
-def test_cli_set_published_rolls_back_when_upload_fails(tmp_path, monkeypatch):
-    _config(tmp_path)
-    page = _page(tmp_path, published=False)
-    monkeypatch.chdir(tmp_path)
+def test_generated_asset_url_is_stable_and_encoded():
+    publisher = PublisherConfig(
+        command=("upload", "{staging_dir}"),
+        public_base_url="https://cdn.example/public/imgs",
+    )
 
-    def fail_after_gate(_config, qmd_file, **_kwargs):
-        assert is_published_page(qmd_file)
-        raise AssetPublicationError("upload failed")
+    key = generated_asset_key(Path("My Page/plot one.png"), publisher)
 
-    with patch("foliate.published_assets.publish_page_assets", fail_after_gate):
-        result = CliRunner().invoke(
-            main, ["publish-assets", page.name, "--set-published"]
-        )
-
-    assert result.exit_code == 1
-    assert "upload failed" in result.output
-    assert "published: false" in page.read_text(encoding="utf-8")
+    assert key == "quarto/My Page/plot one.png"
+    assert public_asset_url(key, publisher) == (
+        "https://cdn.example/public/imgs/"
+        "quarto/My%20Page/plot%20one.png"
+    )
 
 
-def test_cli_set_published_keeps_true_after_success(tmp_path, monkeypatch):
-    _config(tmp_path)
-    page = _page(tmp_path, published=False)
-    monkeypatch.chdir(tmp_path)
+def test_prepare_dry_run_rewrites_copy_and_stages_only_referenced_assets(
+    tmp_path, monkeypatch
+):
+    config = _config(tmp_path)
+    build_dir, asset, html = _build_with_assets(config)
+    upload = Mock()
+    monkeypatch.setattr("foliate.published_assets.subprocess.run", upload)
 
-    def succeed_after_gate(_config, qmd_file, **_kwargs):
-        assert is_published_page(qmd_file)
-        return PublishResult(discovered=1, uploaded=1, unchanged=0, dry_run=False)
+    result = prepare_published_build(config, build_dir, dry_run=True)
 
-    with patch("foliate.published_assets.publish_page_assets", succeed_after_gate):
-        result = CliRunner().invoke(
-            main, ["publish-assets", page.name, "--set-published"]
-        )
+    assert result.path != build_dir
+    assert result.asset_count == 1
+    assert upload.call_count == 0
+    assert asset.exists()
+    assert "/assets/quarto/" in html.read_text(encoding="utf-8")
 
-    assert result.exit_code == 0
-    assert "Uploaded 1 of 1 assets" in result.output
-    assert "published: true" in page.read_text(encoding="utf-8")
+    deploy_html = result.path / html.relative_to(build_dir)
+    deploy_content = deploy_html.read_text(encoding="utf-8")
+    assert deploy_content.count(
+        "https://cdn.example/public/imgs/quarto/My%20Page/"
+    ) == 2
+    assert "https://example.comhttps://" not in deploy_content
+    assert not (result.path / "assets" / "quarto").exists()
+
+    staged = list((config.get_cache_dir() / "publisher" / "staging").rglob("*.png"))
+    assert len(staged) == 1
+    assert staged[0].read_bytes() == b"plot"
 
 
-def test_cli_set_published_dry_run_restores_false(tmp_path, monkeypatch):
-    _config(tmp_path)
-    page = _page(tmp_path, published=False)
-    monkeypatch.chdir(tmp_path)
+def test_prepare_published_build_runs_one_tree_upload(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    build_dir, _asset, _html = _build_with_assets(config)
+    upload = Mock()
+    monkeypatch.setattr("foliate.published_assets.subprocess.run", upload)
 
-    def dry_run_after_gate(_config, qmd_file, **kwargs):
-        assert is_published_page(qmd_file)
-        assert kwargs["dry_run"] is True
-        return PublishResult(discovered=2, uploaded=2, unchanged=0, dry_run=True)
+    result = prepare_published_build(config, build_dir)
 
-    with patch("foliate.published_assets.publish_page_assets", dry_run_after_gate):
-        result = CliRunner().invoke(
-            main,
-            ["publish-assets", page.name, "--set-published", "--dry-run"],
-        )
+    assert result.asset_count == 1
+    upload.assert_called_once()
+    assert upload.call_args.kwargs == {"check": True}
+    command = upload.call_args.args[0]
+    assert command[0] == "uploader"
+    assert Path(command[1]).is_dir()
 
-    assert result.exit_code == 0
-    assert "Would upload 2 of 2 assets" in result.output
-    assert "published: false" in page.read_text(encoding="utf-8")
+
+def test_publish_command_can_target_only_the_managed_prefix(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    (tmp_path / ".foliate" / "assets.toml").write_text(
+        "[publisher]\n"
+        'command = ["sync", "{staging_prefix_dir}", "remote/{key_prefix}"]\n'
+        'public_base_url = "https://cdn.example/public/imgs"\n'
+        'key_prefix = "quarto"\n',
+        encoding="utf-8",
+    )
+    build_dir, _asset, _html = _build_with_assets(config)
+    upload = Mock()
+    monkeypatch.setattr("foliate.published_assets.subprocess.run", upload)
+
+    prepare_published_build(config, build_dir)
+
+    command = upload.call_args.args[0]
+    assert command[0] == "sync"
+    assert Path(command[1]).name == "quarto"
+    assert command[2] == "remote/quarto"
+
+
+def test_empty_public_asset_set_still_syncs_for_remote_deletion(
+    tmp_path, monkeypatch
+):
+    config = _config(tmp_path)
+    build_dir = config.get_build_dir()
+    build_dir.mkdir(parents=True)
+    (build_dir / "index.html").write_text("No figures", encoding="utf-8")
+    upload = Mock()
+    monkeypatch.setattr("foliate.published_assets.subprocess.run", upload)
+
+    result = prepare_published_build(config, build_dir)
+
+    assert result.asset_count == 0
+    upload.assert_called_once()
+    prefix_dir = Path(upload.call_args.args[0][1])
+    assert prefix_dir.name == "quarto"
+    assert prefix_dir.is_dir()
+
+
+def test_prepare_published_build_propagates_upload_failure(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    build_dir, _asset, _html = _build_with_assets(config)
+
+    def fail(*_args, **_kwargs):
+        raise CalledProcessError(1, "uploader")
+
+    monkeypatch.setattr("foliate.published_assets.subprocess.run", fail)
+
+    with pytest.raises(AssetPublicationError, match="upload failed"):
+        prepare_published_build(config, build_dir)

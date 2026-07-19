@@ -6,6 +6,7 @@ Sanitizes wikilinks in generated HTML files:
 - Cleans escaped dollar signs to prevent KaTeX processing issues
 """
 
+import json
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -13,6 +14,9 @@ from bs4 import BeautifulSoup
 from .config import Config
 from .markdown_utils import slugify_path  # noqa: F401
 from .page import Page
+
+POSTPROCESS_CACHE_FILE = ".postprocess_cache"
+POSTPROCESS_CACHE_VERSION = 1
 
 
 def extract_wiki_path(href: str, wiki_prefix: str = "wiki") -> str | None:
@@ -137,7 +141,7 @@ def process_html_file(
     wiki_prefix: str = "wiki",
     build_dir: Path | None = None,
     slug_to_original: dict[str, str] | None = None,
-) -> bool:
+) -> bool | None:
     """Process a single HTML file to sanitize wikilinks.
 
     Args:
@@ -148,7 +152,7 @@ def process_html_file(
         slug_to_original: Mapping from slugified paths to original page paths
 
     Returns:
-        True if file was modified, False otherwise
+        True if file was modified, False if unchanged, or None on error
     """
     from .logging import debug, error
 
@@ -180,7 +184,67 @@ def process_html_file(
 
     except Exception as e:
         error(f"Processing {html_file}: {e}")
-        return False
+        return None
+
+
+def _file_fingerprint(path: Path) -> dict[str, int] | None:
+    """Return a cheap fingerprint for a generated HTML file."""
+    try:
+        stat_result = path.stat()
+    except OSError:
+        return None
+    return {
+        "mtime_ns": stat_result.st_mtime_ns,
+        "size": stat_result.st_size,
+    }
+
+
+def _load_postprocess_cache(cache_file: Path) -> dict[str, object]:
+    """Load a postprocessing cache, treating invalid data as a cache miss."""
+    try:
+        with cache_file.open(encoding="utf-8") as file:
+            payload = json.load(file)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _save_postprocess_cache(cache_file: Path, payload: dict[str, object]) -> None:
+    """Persist postprocessing fingerprints without making builds depend on them."""
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        with cache_file.open("w", encoding="utf-8") as file:
+            json.dump(payload, file)
+    except OSError:
+        # This cache is only an optimization; postprocessing already succeeded.
+        return
+
+
+def _cached_file_fingerprints(
+    payload: dict[str, object],
+    *,
+    public_paths: set[str],
+    wiki_prefix: str,
+    slugify: bool,
+) -> dict[str, dict[str, int]]:
+    """Return cached file fingerprints when postprocessing inputs match."""
+    if payload.get("version") != POSTPROCESS_CACHE_VERSION:
+        return {}
+    if payload.get("public_paths") != sorted(public_paths):
+        return {}
+    if payload.get("wiki_prefix") != wiki_prefix:
+        return {}
+    if payload.get("slugify") is not slugify:
+        return {}
+
+    files = payload.get("files")
+    if not isinstance(files, dict):
+        return {}
+    return {
+        key: value
+        for key, value in files.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
 
 
 def _is_static_html_file(html_file: Path, build_dir: Path) -> bool:
@@ -276,12 +340,47 @@ def postprocess_links(
         html_files = _find_all_html_files(build_dir)
         debug(f"  Processing {len(html_files)} HTML files...")
 
+    cached_files: dict[str, dict[str, int]] = {}
+    updated_files: dict[str, dict[str, int]] = {}
+    cache_file = config.get_cache_dir() / POSTPROCESS_CACHE_FILE
+    if not single_page:
+        cached_files = _cached_file_fingerprints(
+            _load_postprocess_cache(cache_file),
+            public_paths=public_paths,
+            wiki_prefix=wiki_prefix,
+            slugify=slugify,
+        )
+
     modified_count = 0
     for html_file in html_files:
-        if process_html_file(
+        cache_key = html_file.relative_to(build_dir).as_posix()
+        fingerprint = _file_fingerprint(html_file)
+        if not single_page and cached_files.get(cache_key) == fingerprint:
+            if fingerprint is not None:
+                updated_files[cache_key] = fingerprint
+            continue
+
+        result = process_html_file(
             html_file, public_paths, wiki_prefix, build_dir, slug_to_original
-        ):
+        )
+        if result:
             modified_count += 1
+        if not single_page and result is not None:
+            fingerprint = _file_fingerprint(html_file)
+            if fingerprint is not None:
+                updated_files[cache_key] = fingerprint
+
+    if not single_page:
+        _save_postprocess_cache(
+            cache_file,
+            {
+                "version": POSTPROCESS_CACHE_VERSION,
+                "public_paths": sorted(public_paths),
+                "wiki_prefix": wiki_prefix,
+                "slugify": slugify,
+                "files": updated_files,
+            },
+        )
 
     if not single_page:
         debug(f"  Post-processing complete: {modified_count} files modified")

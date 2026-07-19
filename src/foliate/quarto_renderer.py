@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -104,6 +105,33 @@ def _extract_cell_widths(qmd_file: Path) -> dict[str, str]:
     return widths
 
 
+_INLINE_EXPRESSION = re.compile(r"`\{[A-Za-z][\w.+-]*\}\s+[^`\n]+`")
+
+
+def _has_inline_expressions(qmd_file: Path) -> bool:
+    """Return whether a QMD uses executable inline code outside fences."""
+    in_fence = False
+    fence_character = ""
+    fence_length = 0
+
+    for line in qmd_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.lstrip()
+        fence = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence:
+            marker = fence.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_character = marker[0]
+                fence_length = len(marker)
+            elif marker[0] == fence_character and len(marker) >= fence_length:
+                in_fence = False
+            continue
+        if not in_fence and _INLINE_EXPRESSION.search(line):
+            return True
+
+    return False
+
+
 def _extract_frontmatter(qmd_file: Path) -> dict[str, object]:
     """Read the source frontmatter, returning an empty mapping on failure."""
     try:
@@ -179,6 +207,16 @@ def _strip_html_wrappers(
         flags=re.DOTALL,
     )
 
+    # Quarto sometimes emits GFM figures as an image followed by an ordinary
+    # numbered paragraph instead of a <figure>/<figcaption> wrapper. Preserve
+    # the caption distinction using Foliate's existing italic-caption markup.
+    content = re.sub(
+        r"(?m)(!\[[^\]\n]*\]\([^\n]+\)\n\n)"
+        r"(Figure(?:\u00a0| )\d+:[^\n]+)$",
+        r"\1*\2*",
+        content,
+    )
+
     def fix_broken_link(match: re.Match[str]) -> str:
         text = match.group(1).replace("\n", " ")
         url = match.group(2).replace("\n", "")
@@ -209,19 +247,18 @@ def _strip_html_wrappers(
 def _fix_figure_paths(
     md_file: Path,
     relative_source: Path,
-    assets_dir: Path,
-    pages_dir: Path,
+    asset_url_prefix: str,
 ) -> None:
     """Point rendered Markdown at Foliate's generated-asset directory."""
     content = md_file.read_text(encoding="utf-8")
     stem = md_file.stem
     encoded_stem = quote(stem)
-    assets_relative = assets_dir.relative_to(pages_dir)
+    url_prefix = asset_url_prefix.rstrip("/")
     parent = relative_source.parent
     if parent == Path("."):
-        new_base = f"/{assets_relative}/{encoded_stem}/"
+        new_base = f"{url_prefix}/{encoded_stem}/"
     else:
-        new_base = f"/{assets_relative}/{quote(parent.as_posix())}/{encoded_stem}/"
+        new_base = f"{url_prefix}/{quote(parent.as_posix())}/{encoded_stem}/"
 
     for candidate in (stem, encoded_stem):
         figure_dir = rf"{re.escape(candidate)}_files/figure-[^/]+/"
@@ -230,72 +267,137 @@ def _fix_figure_paths(
     md_file.write_text(content, encoding="utf-8")
 
 
+def _sync_figure_assets(source_dir: Path | None, target_dir: Path) -> None:
+    """Promote generated figures without rewriting unchanged destination files."""
+    sources = (
+        {path.name: path for path in source_dir.rglob("*") if path.is_file()}
+        if source_dir is not None and source_dir.is_dir()
+        else {}
+    )
+
+    if sources:
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    for name, source in sources.items():
+        destination = target_dir / name
+        same_size = (
+            destination.is_file()
+            and source.stat().st_size == destination.stat().st_size
+        )
+        if same_size:
+            with source.open("rb") as source_file, destination.open(
+                "rb"
+            ) as destination_file:
+                source_hash = hashlib.file_digest(source_file, "sha256").digest()
+                destination_hash = hashlib.file_digest(
+                    destination_file, "sha256"
+                ).digest()
+            if source_hash == destination_hash:
+                continue
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{name}.", suffix=".foliate-tmp", dir=target_dir, delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+        try:
+            shutil.copy2(source, temporary_path)
+            temporary_path.replace(destination)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    if target_dir.is_dir():
+        for existing in target_dir.iterdir():
+            if existing.is_file() and existing.name in sources:
+                continue
+            if existing.is_dir():
+                shutil.rmtree(existing)
+            else:
+                existing.unlink()
+        if not any(target_dir.iterdir()):
+            target_dir.rmdir()
+
+
 def render_qmd(
     qmd_file: Path,
     pages_dir: Path,
     cache_dir: Path,
     assets_dir: Path,
+    asset_url_prefix: str = "/assets/quarto",
     python: str | None = None,
     verbose: bool = False,
+    refresh_cache: bool = False,
 ) -> Path | None:
-    """Render one QMD source to GFM and relocate its generated figures."""
+    """Render one QMD source to GFM and promote its generated figures."""
     relative_source = qmd_file.relative_to(pages_dir)
     output_md = qmd_file.with_suffix(".md")
     original_frontmatter = _extract_frontmatter(qmd_file)
     cell_widths = _extract_cell_widths(qmd_file)
+    use_execution_cache = not _has_inline_expressions(qmd_file)
     if verbose:
         print(f"  Rendering: {relative_source}")
         if cell_widths:
             print(f"  Found widths: {cell_widths}")
+        if not use_execution_cache:
+            print("  Inline expression found; rendering without Jupyter Cache")
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    execution_cache = cache_dir / "execution" / relative_source.parent / qmd_file.stem
+    if use_execution_cache:
+        execution_cache.mkdir(parents=True, exist_ok=True)
+    local_figures = qmd_file.with_name(f"{qmd_file.stem}_files")
+    if local_figures.exists():
+        shutil.rmtree(local_figures)
+
+    command = [
+        "quarto",
+        "render",
+        qmd_file.name,
+        "--to",
+        "gfm",
+        "--metadata",
+        "from:markdown-smart",
+        "--wrap=none",
+        "--cache" if use_execution_cache else "--no-cache",
+        "--output",
+        output_md.name,
+        "--execute-dir",
+        str(qmd_file.parent),
+    ]
+    if refresh_cache and use_execution_cache:
+        command.append("--cache-refresh")
+
+    render_environment = {
+        **os.environ,
+        **({"JUPYTERCACHE": str(execution_cache)} if use_execution_cache else {}),
+        **({"QUARTO_PYTHON": python} if python else {}),
+    }
+
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="execution-", dir=cache_dir
-        ) as execution_cache:
-            result = subprocess.run(
-                [
-                    "quarto",
-                    "render",
-                    qmd_file.name,
-                    "--to",
-                    "gfm",
-                    "--wrap=none",
-                    "--output",
-                    output_md.name,
-                    "--execute-dir",
-                    str(qmd_file.parent),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=300,
-                cwd=qmd_file.parent,
-                env={
-                    **os.environ,
-                    "QUARTO_CACHE_PATH": execution_cache,
-                    **({"QUARTO_PYTHON": python} if python else {}),
-                },
-            )
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=qmd_file.parent,
+            env=render_environment,
+        )
     except subprocess.TimeoutExpired:
         print(f"  Timeout rendering {qmd_file.name}")
+        if local_figures.exists():
+            shutil.rmtree(local_figures)
         return None
     if result.returncode != 0:
         print(f"  Error rendering {qmd_file.name}: {result.stderr}")
+        if local_figures.exists():
+            shutil.rmtree(local_figures)
         return None
 
-    local_figures = qmd_file.with_name(f"{qmd_file.stem}_files")
-    if local_figures.exists():
-        target = assets_dir / relative_source.parent / qmd_file.stem
-        target.mkdir(parents=True, exist_ok=True)
-        for source in local_figures.rglob("*"):
-            if source.is_file():
-                destination = target / source.name
-                if destination.exists():
-                    destination.unlink()
-                shutil.move(str(source), str(destination))
-        shutil.rmtree(local_figures)
-        _fix_figure_paths(output_md, relative_source, assets_dir, pages_dir)
-
+    _fix_figure_paths(output_md, relative_source, asset_url_prefix)
     _strip_html_wrappers(output_md, cell_widths=cell_widths, verbose=verbose)
     _merge_frontmatter(output_md, original_frontmatter)
+
+    target = assets_dir / relative_source.parent / qmd_file.stem
+    _sync_figure_assets(local_figures if local_figures.exists() else None, target)
+    if local_figures.exists():
+        shutil.rmtree(local_figures)
     return output_md

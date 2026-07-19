@@ -148,7 +148,6 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
     """Build the static site."""
     from .build import build as do_build
     from .logging import setup_logging
-    from .published_assets import AssetPublicationError
 
     # Initialize logging based on verbosity
     setup_logging(verbose=verbose)
@@ -167,13 +166,15 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
         )
         return
 
+    from .published_assets import AssetPublicationError
+
     try:
         result = do_build(
             config=config,
             force_rebuild=force,
         )
-    except AssetPublicationError as error:
-        _exit_with_error(str(error))
+    except AssetPublicationError as exc:
+        _exit_with_error(str(exc))
 
     if result == 0:
         _exit_with_error("No public pages found to build")
@@ -185,7 +186,11 @@ def build(force: bool, dry_run: bool, verbose: bool, serve: bool, port: int):
         try:
             click.echo(f"\nStarting server at http://localhost:{port}")
             click.echo("Press Ctrl+C to stop")
-            start_dev_server(build_dir, port, background=False)
+            start_dev_server(
+                build_dir,
+                port,
+                background=False,
+            )
         except OSError as e:
             _exit_with_error(str(e), leading_newline=True)
         except KeyboardInterrupt:
@@ -265,70 +270,19 @@ def status(verbose: bool):
     click.echo(output)
 
 
-@main.command("publish-assets")
-@click.argument("page", type=click.Path(path_type=Path))
-@click.option(
-    "--dry-run", "-n", is_flag=True, help="Render and show uploads without executing"
-)
-@click.option("--force", "-f", is_flag=True, help="Upload unchanged assets too")
-@click.option(
-    "--set-published",
-    is_flag=True,
-    help="Set published: true and restore it if publication fails",
-)
-def publish_assets(page: Path, dry_run: bool, force: bool, set_published: bool):
-    """Publish generated assets for one explicitly published QMD PAGE."""
-    from .published_assets import (
-        AssetPublicationError,
-        publish_page_assets,
-        set_page_published,
-    )
-    from .quarto import quarto_render_lock
-
-    config = _load_config_or_exit()
-    vault = config.vault_path or Path.cwd()
-    qmd_file = page if page.is_absolute() else vault / page
-    if qmd_file.suffix == "":
-        qmd_file = qmd_file.with_suffix(".qmd")
-
-    original_content: str | None = None
-    with quarto_render_lock(config):
-        try:
-            if set_published:
-                original_content = set_page_published(qmd_file)
-            result = publish_page_assets(
-                config,
-                qmd_file,
-                dry_run=dry_run,
-                force=force,
-            )
-        except AssetPublicationError as error:
-            if original_content is not None:
-                qmd_file.write_text(original_content, encoding="utf-8")
-            _exit_with_error(str(error))
-        except Exception:
-            if original_content is not None:
-                qmd_file.write_text(original_content, encoding="utf-8")
-            raise
-
-        if dry_run and original_content is not None:
-            qmd_file.write_text(original_content, encoding="utf-8")
-
-    action = "Would upload" if dry_run else "Uploaded"
-    click.echo(
-        f"{action} {result.uploaded} of {result.discovered} assets "
-        f"({result.unchanged} unchanged)"
-    )
-
-
 @main.command()
 @click.option(
     "--dry-run", "-n", is_flag=True, help="Show what would be done without executing"
 )
 @click.option("--message", "-m", default=None, help="Custom commit message")
-@click.option("--build", "-b", is_flag=True, help="Build site before deploying")
+@click.option(
+    "--build/--no-build",
+    "build_first",
+    default=True,
+    help="Build site before deploying (default: enabled)",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
-def deploy(dry_run: bool, message: str, build: bool, verbose: bool):
+def deploy(dry_run: bool, message: str, build_first: bool, verbose: bool):
     """Deploy built site to configured target."""
     from .deploy import deploy_github_pages
 
@@ -340,7 +294,11 @@ def deploy(dry_run: bool, message: str, build: bool, verbose: bool):
         raise SystemExit(1)
 
     success = deploy_github_pages(
-        config, dry_run=dry_run, message=message, build_first=build, verbose=verbose
+        config,
+        dry_run=dry_run,
+        message=message,
+        build_first=build_first,
+        verbose=verbose,
     )
     if not success:
         raise SystemExit(1)

@@ -112,3 +112,20 @@ class TestGlobalDependencyCache:
 
         assert cache[build_cache.CONFIG_MTIME_KEY] == config_path.stat().st_mtime
         assert build_cache.TEMPLATES_MTIME_KEY in cache
+        assert cache[build_cache.BUILD_SCHEMA_KEY] == build_cache.BUILD_SCHEMA_VERSION
+
+    def test_build_schema_change_invalidates_cache_once(self, tmp_path):
+        """A schema mismatch forces one rebuild, then the updated cache is valid."""
+        config_path = tmp_path / ".foliate" / "config.toml"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text("[site]\nname = 'Test'")
+        cache: dict[str, float | int] = {}
+
+        assert build_cache.check_global_deps_changed(cache, config_path, tmp_path)
+
+        build_cache.update_global_deps_cache(cache, config_path, tmp_path)
+
+        assert not build_cache.check_global_deps_changed(cache, config_path, tmp_path)
+
+        cache[build_cache.BUILD_SCHEMA_KEY] = build_cache.BUILD_SCHEMA_VERSION - 1
+        assert build_cache.check_global_deps_changed(cache, config_path, tmp_path)

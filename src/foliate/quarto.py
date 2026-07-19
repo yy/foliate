@@ -3,8 +3,8 @@
 Converts .qmd files to cached .md before the main build.
 """
 
-import shutil
 import threading
+from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -102,17 +102,14 @@ def get_quarto_asset_dir(config: Config, qmd_file: Path) -> Path | None:
     if not vault_path:
         return None
 
-    from .published_assets import get_managed_asset_dir, is_managed_page
-
-    if is_managed_page(qmd_file):
-        return get_managed_asset_dir(config, qmd_file)
-
     try:
         rel_path = qmd_file.resolve().relative_to(vault_path.resolve())
     except ValueError:
         return None
 
-    assets_dir = vault_path.resolve() / "assets" / "quarto"
+    from .published_assets import get_generated_asset_root
+
+    assets_dir = get_generated_asset_root(config)
     parent = rel_path.parent
     if parent == Path("."):
         return assets_dir / qmd_file.stem
@@ -252,12 +249,89 @@ def _write_preview(
     preview_md.write_text(warning + content, encoding="utf-8")
 
 
+def _remove_empty_artifact_parents(path: Path, root: Path) -> None:
+    """Remove empty artifact directories below a managed root."""
+    current = path
+    while current != root:
+        try:
+            current.rmdir()
+        except OSError:
+            return
+        current = current.parent
+
+
+def _prune_markdown_artifacts(
+    root: Path,
+    expected_files: set[Path],
+    *,
+    require_generated_marker: bool,
+) -> None:
+    """Remove stale generated Markdown files from a managed artifact tree."""
+    if not root.is_dir():
+        return
+
+    for artifact in root.rglob("*.md"):
+        if artifact in expected_files:
+            continue
+        if require_generated_marker:
+            try:
+                content = artifact.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            has_generated_marker = (
+                "<!-- GENERATED FROM " in content and "; DO NOT EDIT -->" in content
+            )
+            if not has_generated_marker:
+                continue
+
+        try:
+            artifact.unlink()
+        except OSError:
+            continue
+        _remove_empty_artifact_parents(artifact.parent, root)
+
+
+def _prune_stale_quarto_markdown(
+    config: Config,
+    source_files: list[Path],
+) -> None:
+    """Reconcile rendered and preview Markdown with the current QMD inventory."""
+    cached_root = config.get_cache_dir() / "quarto" / "rendered"
+    expected_cached = {
+        cached_path
+        for source_file in source_files
+        if (cached_path := get_cached_markdown_path(config, source_file)) is not None
+    }
+    _prune_markdown_artifacts(
+        cached_root,
+        expected_cached,
+        require_generated_marker=False,
+    )
+
+    vault_path = config.vault_path
+    preview_dir = config.advanced.quarto_preview_dir.strip()
+    if not vault_path or not preview_dir:
+        return
+
+    preview_root = vault_path / preview_dir
+    expected_previews = {
+        preview_path
+        for source_file in source_files
+        if (preview_path := get_preview_markdown_path(config, source_file)) is not None
+    }
+    _prune_markdown_artifacts(
+        preview_root,
+        expected_previews,
+        require_generated_marker=True,
+    )
+
+
 def preprocess_quarto(
     config: Config,
     force: bool = False,
     single_file: Path | None = None,
     *,
-    validate_published_assets: bool = True,
+    source_files: Iterable[Path] | None = None,
 ) -> dict[str, str]:
     """Preprocess .qmd files to cached Markdown using Quarto.
 
@@ -265,6 +339,7 @@ def preprocess_quarto(
         config: Foliate configuration
         force: Force re-render all .qmd files
         single_file: Only process this specific .qmd file (Path object)
+        source_files: Optional preselected bulk-mode QMD sources
 
     Returns:
         dict mapping .qmd paths to cached rendered .md paths,
@@ -297,37 +372,25 @@ def preprocess_quarto(
         if sibling_backup.exists() and not sibling_md.exists():
             sibling_backup.replace(sibling_md)
 
-        # Check if render needed: md doesn't exist or qmd is newer
+        asset_dir = get_quarto_asset_dir(config, qmd_file)
+
+        # Check if render needed: markdown is missing/newer, or a cached page
+        # references generated figures that are absent from the active backend.
         needs_render = not cached_md.exists() or (
             qmd_file.stat().st_mtime > cached_md.stat().st_mtime
         )
+        if not needs_render and asset_dir is not None and not asset_dir.exists():
+            cached_text = cached_md.read_text(encoding="utf-8")
+            needs_render = any(
+                prefix in cached_text
+                for prefix in ("/assets/quarto/", "/assets/drafts/quarto/")
+            )
 
         if not force and not needs_render:
-            from .published_assets import apply_published_asset_urls
-
-            content = cached_md.read_text(encoding="utf-8")
-            prepared = apply_published_asset_urls(
-                config,
-                qmd_file,
-                content,
-                require_current=validate_published_assets,
-            )
-            if prepared != content:
-                cached_md.write_text(prepared, encoding="utf-8")
             preview_md = get_preview_markdown_path(config, qmd_file)
             if preview_md is not None and _preview_is_stale(preview_md, cached_md):
                 _write_preview(config, preview_md, cached_md, qmd_file)
             return str(cached_md)
-
-        # Move existing per-document assets aside rather than deleting them, so
-        # a failed render leaves the previous output (and its links) intact.
-        asset_dir = get_quarto_asset_dir(config, qmd_file)
-        asset_backup: Path | None = None
-        if asset_dir is not None and asset_dir.exists():
-            asset_backup = asset_dir.with_name(f"{asset_dir.name}.foliate-bak")
-            if asset_backup.exists():
-                shutil.rmtree(asset_backup)
-            asset_dir.replace(asset_backup)
 
         had_sibling = sibling_md.exists()
         if had_sibling:
@@ -336,28 +399,19 @@ def preprocess_quarto(
             sibling_md.replace(sibling_backup)
 
         result = None
-        succeeded = False
         try:
-            from .published_assets import (
-                apply_published_asset_urls,
-                get_managed_asset_root,
-                is_managed_page,
-                is_published_page,
-                load_publisher_config,
-            )
+            from .published_assets import get_generated_asset_root
 
-            if is_managed_page(qmd_file):
-                publisher = load_publisher_config(config)
-                render_assets_dir = get_managed_asset_root(config, publisher)
-            else:
-                render_assets_dir = pages_path / "assets" / "quarto"
+            render_assets_dir = get_generated_asset_root(config)
             result = render_qmd(
                 qmd_file=qmd_file,
                 pages_dir=pages_path,
                 cache_dir=cache_dir,
                 assets_dir=render_assets_dir,
+                asset_url_prefix="/assets/quarto",
                 python=quarto_python,
                 verbose=False,
+                refresh_cache=force,
             )
             if not result:
                 return None
@@ -365,12 +419,6 @@ def preprocess_quarto(
             cached_md.parent.mkdir(parents=True, exist_ok=True)
             rendered_text = Path(result).read_text(encoding="utf-8")
             cleaned_text = _clean_rendered_markdown(rendered_text, qmd_file)
-            cleaned_text = apply_published_asset_urls(
-                config,
-                qmd_file,
-                cleaned_text,
-                require_current=validate_published_assets,
-            )
             cached_md.write_text(
                 cleaned_text,
                 encoding="utf-8",
@@ -380,35 +428,12 @@ def preprocess_quarto(
             if preview_md is not None:
                 _write_preview(config, preview_md, cached_md, qmd_file)
 
-            if (
-                validate_published_assets
-                and is_managed_page(qmd_file)
-                and is_published_page(qmd_file)
-                and asset_dir is not None
-                and asset_dir.exists()
-            ):
-                shutil.rmtree(asset_dir)
-
-            succeeded = True
             return str(cached_md)
         finally:
             if result and Path(result).exists():
                 Path(result).unlink()
             if had_sibling and sibling_backup.exists():
                 sibling_backup.replace(sibling_md)
-            if (
-                asset_dir is not None
-                and asset_backup is not None
-                and asset_backup.exists()
-            ):
-                if succeeded:
-                    shutil.rmtree(asset_backup)
-                else:
-                    # Restore the previous assets the failed render may have
-                    # partially overwritten.
-                    if asset_dir.exists():
-                        shutil.rmtree(asset_dir)
-                    asset_backup.replace(asset_dir)
 
     if single_file:
         # Process single file
@@ -423,19 +448,26 @@ def preprocess_quarto(
             return {str(qmd_file): result}
         return {}
 
-    from .build import select_content_sources
-
     results: dict[str, str] = {}
-    selected_sources = select_content_sources(
-        pages_path,
-        config,
-        {".qmd"},
-        duplicate_label="Quarto sources",
-    )
-    for source in selected_sources:
+    if source_files is None:
+        from .build import select_content_sources
+
+        selected_sources = select_content_sources(
+            pages_path,
+            config,
+            {".qmd"},
+            duplicate_label="Quarto sources",
+        )
+        source_files = (source.source_file for source in selected_sources)
+
+    source_file_list = [Path(source_file) for source_file in source_files]
+    with quarto_render_lock(config):
+        _prune_stale_quarto_markdown(config, source_file_list)
+
+    for qmd_file in source_file_list:
         with quarto_render_lock(config):
-            result = _render_source(source.source_file)
+            result = _render_source(qmd_file)
         if result:
-            results[str(source.source_file)] = result
+            results[str(qmd_file)] = result
 
     return results

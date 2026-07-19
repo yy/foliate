@@ -150,7 +150,10 @@ class FoliateEventHandler(FileSystemEventHandler):
 
             for qmd_file in qmd_files:
                 info(f"  Preprocessing: {qmd_file.name}")
-                preprocess_quarto(self.config, single_file=qmd_file)
+                preprocess_quarto(
+                    self.config,
+                    single_file=qmd_file,
+                )
 
         self.rebuild_callback(force=needs_full_rebuild)
 
@@ -195,7 +198,10 @@ class RebuildCoordinator:
         timestamp = datetime.now().strftime("%H:%M:%S")
         info(f"\n[{timestamp}] Rebuilding...")
         start_time = time.time()
-        do_build(config=self.config, force_rebuild=force)
+        do_build(
+            config=self.config,
+            force_rebuild=force,
+        )
         elapsed = time.time() - start_time
         info(f"[{timestamp}] Rebuild complete ({elapsed:.2f}s)")
 
@@ -221,8 +227,13 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     info("Watch mode: Building initial site...")
     info("=" * 60)
 
-    # Initial build from source to avoid stale post-processed HTML from prior runs.
-    do_build(config=config, force_rebuild=True)
+    # Build incrementally when the cache is current. Build-schema changes still
+    # trigger a one-time full HTML rebuild without rerendering unchanged QMD files.
+    do_build(
+        config=config,
+        force_rebuild=False,
+        force_quarto=False,
+    )
 
     # Start HTTP server in background
     from .resources import start_dev_server
@@ -230,7 +241,11 @@ def watch(config: Config, port: int = 8000, verbose: bool = False) -> None:
     build_dir = config.get_build_dir()
     server_process = None
     try:
-        server_process = start_dev_server(build_dir, port, background=True)
+        server_process = start_dev_server(
+            build_dir,
+            port,
+            background=True,
+        )
         info("=" * 60)
         info(f"Server started: http://localhost:{port}")
     except OSError as e:

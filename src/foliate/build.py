@@ -1,6 +1,7 @@
 """Core build logic for foliate static site generator."""
 
 import json
+import os
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -8,9 +9,16 @@ from pathlib import Path
 
 from jinja2 import Environment
 
-from .assets import copy_static_assets, copy_user_assets, robust_rmtree
+from .assets import (
+    copy_directory_incremental,
+    copy_static_assets,
+    copy_user_assets,
+    robust_rmtree,
+)
 from .cache import (
     BUILD_CACHE_FILE,
+    SOURCE_VISIBILITY_CACHE_KEY,
+    SOURCE_VISIBILITY_CACHE_VERSION,
     load_build_cache,
     needs_rebuild,
     save_build_cache,
@@ -187,11 +195,29 @@ class SourceCandidate:
     is_homepage_content: bool
 
 
-def iter_source_files(vault_path: Path, suffixes: set[str]) -> Iterator[Path]:
-    """Iterate source files matching the given suffixes, case-insensitively."""
-    matching = [
-        f for f in vault_path.rglob("*") if f.is_file() and f.suffix.lower() in suffixes
-    ]
+_INTERNAL_SOURCE_FOLDERS = frozenset({".foliate", ".git", ".venv"})
+
+
+def iter_source_files(
+    vault_path: Path,
+    suffixes: set[str],
+    ignored_folders: Iterable[str] = (),
+) -> Iterator[Path]:
+    """Iterate source files without descending into ignored directory trees."""
+    excluded_folders = _INTERNAL_SOURCE_FOLDERS | set(ignored_folders)
+    matching: list[Path] = []
+
+    for root, directories, filenames in os.walk(vault_path):
+        directories[:] = sorted(
+            directory for directory in directories if directory not in excluded_folders
+        )
+        root_path = Path(root)
+        matching.extend(
+            root_path / filename
+            for filename in filenames
+            if Path(filename).suffix.lower() in suffixes
+        )
+
     matching.sort()
     yield from matching
 
@@ -207,17 +233,12 @@ def iter_content_source_files(
     preview_dir = config.advanced.quarto_preview_dir.strip()
     preview_parts = Path(preview_dir).parts if preview_dir else ()
 
-    for source_file in iter_source_files(vault_path, suffixes):
-        if is_path_ignored(source_file, vault_path, ignored_folders):
-            continue
-
+    for source_file in iter_source_files(
+        vault_path, suffixes, ignored_folders=ignored_folders
+    ):
         try:
             rel_path = source_file.relative_to(vault_path)
         except ValueError:
-            continue
-
-        # Never treat .foliate internals as content pages.
-        if rel_path.parts and rel_path.parts[0] == ".foliate":
             continue
 
         # Skip the generated Quarto Obsidian-preview tree.
@@ -523,6 +544,9 @@ def iter_public_md_files(
     config: Config,
     single_page: str | None = None,
     on_skipped: Callable[[Path, str], None] | None = None,
+    selected_sources: Iterable[SourceCandidate] | None = None,
+    source_visibility_cache: dict[str, dict[str, object]] | None = None,
+    updated_visibility_cache: dict[str, dict[str, object]] | None = None,
 ):
     """Iterate over public markdown files in the vault.
 
@@ -533,12 +557,13 @@ def iter_public_md_files(
     from .logging import debug
     from .quarto import get_buildable_content_suffixes, get_cached_markdown_path
 
-    selected_sources = select_content_sources(
-        vault_path,
-        config,
-        get_buildable_content_suffixes(config),
-        duplicate_label="content sources",
-    )
+    if selected_sources is None:
+        selected_sources = select_content_sources(
+            vault_path,
+            config,
+            get_buildable_content_suffixes(config),
+            duplicate_label="content sources",
+        )
 
     for source in selected_sources:
         source_file = source.source_file
@@ -557,7 +582,29 @@ def iter_public_md_files(
                 continue
             parse_file = cached_md
 
+        cache_key = str(source_file)
+        cached_visibility = _get_cached_source_visibility(
+            cache_key,
+            parse_file,
+            source_visibility_cache,
+        )
+        if cached_visibility is False and not single_page:
+            if updated_visibility_cache is not None:
+                cached_record = (source_visibility_cache or {}).get(cache_key)
+                if cached_record is not None:
+                    updated_visibility_cache[cache_key] = cached_record
+            if on_skipped:
+                on_skipped(source_file, page_path)
+            continue
+
         meta, markdown_content = parse_markdown_file(parse_file)
+        if updated_visibility_cache is not None:
+            record = _make_source_visibility_record(
+                parse_file,
+                is_public=bool(meta.get("public", False)),
+            )
+            if record is not None:
+                updated_visibility_cache[cache_key] = record
 
         # Check visibility
         if not meta.get("public", False):
@@ -569,6 +616,72 @@ def iter_public_md_files(
                 continue
 
         yield source_file, page_path, content_base_url, meta, markdown_content
+
+
+def _make_source_visibility_record(
+    source_file: Path,
+    *,
+    is_public: bool,
+) -> dict[str, object] | None:
+    """Return a stable, JSON-serializable visibility cache record."""
+    try:
+        stat_result = source_file.stat()
+    except OSError:
+        return None
+
+    return {
+        "mtime_ns": stat_result.st_mtime_ns,
+        "size": stat_result.st_size,
+        "public": is_public,
+    }
+
+
+def _get_cached_source_visibility(
+    cache_key: str,
+    source_file: Path,
+    source_visibility_cache: dict[str, dict[str, object]] | None,
+) -> bool | None:
+    """Return cached visibility when the source fingerprint is unchanged."""
+    if source_visibility_cache is None:
+        return None
+
+    record = source_visibility_cache.get(cache_key)
+    if not isinstance(record, dict):
+        return None
+
+    try:
+        stat_result = source_file.stat()
+    except OSError:
+        return None
+
+    if (
+        record.get("mtime_ns") != stat_result.st_mtime_ns
+        or record.get("size") != stat_result.st_size
+    ):
+        return None
+
+    is_public = record.get("public")
+    return is_public if isinstance(is_public, bool) else None
+
+
+def _load_source_visibility_cache(
+    build_cache: dict,
+) -> dict[str, dict[str, object]]:
+    """Load visibility records when their independent schema is current."""
+    payload = build_cache.get(SOURCE_VISIBILITY_CACHE_KEY)
+    if not isinstance(payload, dict):
+        return {}
+    if payload.get("version") != SOURCE_VISIBILITY_CACHE_VERSION:
+        return {}
+
+    files = payload.get("files")
+    if not isinstance(files, dict):
+        return {}
+    return {
+        key: value
+        for key, value in files.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
 
 
 def _get_output_paths_for_source(
@@ -669,6 +782,9 @@ def _collect_public_markdown_entries(
     vault_path: Path,
     config: Config,
     single_page: str | None = None,
+    selected_sources: Iterable[SourceCandidate] | None = None,
+    source_visibility_cache: dict[str, dict[str, object]] | None = None,
+    updated_visibility_cache: dict[str, dict[str, object]] | None = None,
 ) -> tuple[list[MarkdownBuildEntry], dict[str, int]]:
     """Collect buildable markdown entries and initialize build statistics."""
     stats = {"skipped_count": 0, "rebuilt_count": 0, "cached_count": 0}
@@ -677,7 +793,15 @@ def _collect_public_markdown_entries(
         stats["skipped_count"] += 1
 
     entries = list(
-        iter_public_md_files(vault_path, config, single_page, on_skipped=_track_skipped)
+        iter_public_md_files(
+            vault_path,
+            config,
+            single_page,
+            on_skipped=_track_skipped,
+            selected_sources=selected_sources,
+            source_visibility_cache=source_visibility_cache,
+            updated_visibility_cache=updated_visibility_cache,
+        )
     )
     return entries, stats
 
@@ -711,10 +835,18 @@ def process_markdown_files(
     force_rebuild: bool,
     incremental: bool,
     single_page: str | None = None,
-) -> tuple[list[Page], list[Page], dict[str, float], dict[str, int]]:
+    selected_sources: Iterable[SourceCandidate] | None = None,
+) -> tuple[list[Page], list[Page], dict, dict[str, int]]:
     """Process all markdown files and return page data and statistics."""
+    source_visibility_cache = _load_source_visibility_cache(build_cache)
+    updated_visibility_cache = source_visibility_cache.copy() if single_page else {}
     all_entries, stats = _collect_public_markdown_entries(
-        vault_path, config, single_page
+        vault_path,
+        config,
+        single_page,
+        selected_sources,
+        source_visibility_cache,
+        updated_visibility_cache,
     )
 
     if config.build.slugify_urls and not _validate_slugified_output_paths(all_entries):
@@ -722,7 +854,12 @@ def process_markdown_files(
 
     public_pages: list[Page] = []
     published_pages: list[Page] = []
-    new_build_cache: dict[str, float] = {}
+    new_build_cache: dict = {
+        SOURCE_VISIBILITY_CACHE_KEY: {
+            "version": SOURCE_VISIBILITY_CACHE_VERSION,
+            "files": updated_visibility_cache,
+        }
+    }
 
     for md_file, page_path, base_url, meta, content in all_entries:
         page, was_rebuilt = process_single_md_file(
@@ -761,11 +898,11 @@ def remove_stale_pages(
 
     Returns number of stale pages removed.
     """
+    from .cache import GLOBAL_CACHE_KEYS
     from .logging import debug
 
-    special_keys = {"__config_mtime__", "__templates_mtime__"}
-    old_sources = set(old_cache.keys()) - special_keys
-    new_sources = set(new_cache.keys()) - special_keys
+    old_sources = set(old_cache.keys()) - GLOBAL_CACHE_KEYS
+    new_sources = set(new_cache.keys()) - GLOBAL_CACHE_KEYS
     stale_sources = old_sources - new_sources
 
     if not stale_sources:
@@ -1035,6 +1172,7 @@ def build(
     force_rebuild: bool = False,
     incremental: bool | None = None,
     single_page: str | None = None,
+    force_quarto: bool | None = None,
 ) -> int:
     """Build static site from markdown pages.
 
@@ -1043,6 +1181,7 @@ def build(
         force_rebuild: Force rebuild all pages regardless of modification time
         incremental: Enable incremental builds (default from config)
         single_page: Build only the specified page
+        force_quarto: Force re-render Quarto sources. Defaults to force_rebuild.
 
     Returns:
         Number of public pages built
@@ -1051,6 +1190,8 @@ def build(
 
     if incremental is None:
         incremental = config.build.incremental
+    if force_quarto is None:
+        force_quarto = force_rebuild
 
     # Configure markdown extensions (e.g., nl2br) before any rendering
     from .markdown_utils import configure_extensions
@@ -1071,19 +1212,30 @@ def build(
         return 0
 
     try:
-        # Preprocess Quarto files (.qmd -> .md)
+        # Validate source routes before touching the build directory.
+        from .quarto import get_buildable_content_suffixes
+
+        selected_sources = select_content_sources(
+            vault_path,
+            config,
+            get_buildable_content_suffixes(config),
+            duplicate_label="content sources",
+        )
+
+        # Preprocess the QMD files already found in the shared source inventory.
         if config.advanced.quarto_enabled:
             from .quarto import preprocess_quarto
 
             debug("Preprocessing Quarto files...")
-            preprocess_quarto(config, force=force_rebuild)
-
-        # Validate source routes before touching the build directory.
-        from .quarto import get_buildable_content_suffixes
-
-        select_content_sources(
-            vault_path, config, get_buildable_content_suffixes(config)
-        )
+            preprocess_quarto(
+                config,
+                force=force_quarto,
+                source_files=(
+                    source.source_file
+                    for source in selected_sources
+                    if source.source_file.suffix.lower() == ".qmd"
+                ),
+            )
     except ContentRouteCollisionError as exc:
         error(str(exc))
         return 0
@@ -1101,6 +1253,19 @@ def build(
         force_rebuild,
         excluded_folders=config.build.excluded_asset_folders,
     )
+    from .published_assets import get_generated_asset_root, publisher_is_configured
+
+    if publisher_is_configured(config):
+        generated_assets = get_generated_asset_root(config)
+        generated_target = build_dir / "assets" / "quarto"
+        if generated_assets.is_dir():
+            copy_directory_incremental(
+                generated_assets,
+                generated_target,
+                force_rebuild,
+            )
+        elif generated_target.exists():
+            robust_rmtree(generated_target)
 
     # Print build status
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -1110,14 +1275,15 @@ def build(
 
     # Process markdown files
     public_pages, published_pages, new_build_cache, stats = process_markdown_files(
-        vault_path,
-        build_dir,
-        env,
-        config,
-        build_cache,
-        force_rebuild,
-        incremental,
-        single_page,
+        vault_path=vault_path,
+        build_dir=build_dir,
+        env=env,
+        config=config,
+        build_cache=build_cache,
+        force_rebuild=force_rebuild,
+        incremental=incremental,
+        single_page=single_page,
+        selected_sources=selected_sources,
     )
 
     # Remove stale pages (public→private or deleted)

@@ -246,6 +246,50 @@ class TestPostprocessLinks:
             assert "<a" not in content
             assert 'class="wikilink-private"' in content
 
+    def test_reuses_unchanged_files_until_public_paths_change(self, tmp_path):
+        """Cached HTML is skipped unless output or link visibility changes."""
+        from unittest.mock import patch
+
+        from foliate.config import Config
+
+        config = Config()
+        config.vault_path = tmp_path
+        html_file = config.get_build_dir() / "wiki" / "Home" / "index.html"
+        html_file.parent.mkdir(parents=True)
+        html_file.write_text(
+            '<a href="/wiki/Private/" class="wikilink">Private</a>',
+            encoding="utf-8",
+        )
+        home_page = Page.from_markdown(
+            "Home", {"public": True}, "", render_html=False
+        )
+
+        assert postprocess_links(config, [home_page]) is True
+        assert 'class="wikilink-private"' in html_file.read_text(encoding="utf-8")
+
+        private_page = Page.from_markdown(
+            "Private", {"public": True}, "", render_html=False
+        )
+        assert postprocess_links(config, [home_page, private_page]) is True
+        assert 'class="wikilink"' in html_file.read_text(encoding="utf-8")
+
+        with patch("foliate.postprocess.process_html_file") as mock_process:
+            assert postprocess_links(config, [home_page, private_page]) is True
+
+        mock_process.assert_not_called()
+
+        html_file.write_text(
+            '<a href="/wiki/Private/" class="wikilink">Updated</a>',
+            encoding="utf-8",
+        )
+        with patch(
+            "foliate.postprocess.process_html_file",
+            wraps=process_html_file,
+        ) as mock_process:
+            assert postprocess_links(config, [home_page, private_page]) is True
+
+        mock_process.assert_called_once()
+
     def test_treats_homepage_only_page_as_private_wiki_target(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             from foliate.config import Config

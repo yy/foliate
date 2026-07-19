@@ -72,7 +72,10 @@ def _copy_directory(
                 ignored.append(entry)
         return ignored
 
-    shutil.copytree(src_dir, target_dir, ignore=_ignore)
+    # The target can be recreated after the caller checks/removes it (for
+    # example, by another build). Merge in that case instead of failing at
+    # copytree's initial mkdir; stale content was already handled by the caller.
+    shutil.copytree(src_dir, target_dir, ignore=_ignore, dirs_exist_ok=True)
 
 
 def _iter_filtered_files(

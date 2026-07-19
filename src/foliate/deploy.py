@@ -391,9 +391,14 @@ def deploy_github_pages(
     # Run build first if requested
     if build_first:
         from .build import build as do_build
+        from .published_assets import AssetPublicationError
 
         info("Building site first...")
-        result = do_build(config=config, force_rebuild=False)
+        try:
+            result = do_build(config=config, force_rebuild=False)
+        except AssetPublicationError as exc:
+            error(str(exc))
+            return False
         if result == 0:
             error("No public pages to deploy")
             return False
@@ -432,6 +437,24 @@ def deploy_github_pages(
     if not git_dir.exists():
         error(f"Deploy target is not a git repository: {target}")
         return False
+
+    # A configured generated-asset publisher prepares a separate production
+    # tree. Local builds keep their local figure URLs and remain previewable.
+    from .published_assets import AssetPublicationError, prepare_published_build
+
+    try:
+        published_build = prepare_published_build(
+            config,
+            build_dir,
+            dry_run=dry_run,
+        )
+    except AssetPublicationError as exc:
+        error(str(exc))
+        return False
+    build_dir = published_build.path
+    if published_build.asset_count:
+        action = "Would publish" if dry_run else "Published"
+        info(f"{action} {published_build.asset_count} generated asset(s)")
 
     if dry_run:
         trees_match = _dry_run_trees_match(build_dir, target, config.deploy.exclude)

@@ -124,6 +124,7 @@ foliate build --verbose    # Detailed output
 foliate build --serve      # Start server after build
 foliate watch --port 3000  # Custom port
 foliate deploy --dry-run   # Preview deploy without executing
+foliate deploy --no-build  # Deploy the existing build without rebuilding
 foliate deploy -m "msg"    # Custom commit message
 ```
 
@@ -145,8 +146,9 @@ exclude = ["CNAME", ".gitignore", ".gitmodules"]
 Then deploy:
 
 ```bash
-foliate deploy           # Sync, commit, and push
-foliate deploy --dry-run # Preview changes first
+foliate deploy            # Build, sync, commit, and push
+foliate deploy --no-build # Skip the default build step
+foliate deploy --dry-run  # Preview changes first
 ```
 
 ### rsync (VPS/Server)
@@ -191,7 +193,14 @@ See [docs/customization.md](docs/customization.md) for the full guide, including
 Foliate can preprocess `.qmd` files (Quarto markdown) to `.md` before building.
 Install the [Quarto CLI](https://quarto.org/docs/get-started/) separately. Python
 documents also need a working Jupyter kernel in the environment where Foliate
-runs.
+runs, including the `jupyter-cache` package.
+
+Foliate keeps a stable execution cache for each QMD page. Editing prose still
+regenerates the Markdown, but Quarto reuses Jupyter results while the executable
+cells are unchanged. `foliate build --force` refreshes those results. Generated
+figures are only replaced when their contents change, so unchanged images retain
+their modification times. Pages containing executable inline expressions render
+without Jupyter Cache because Quarto does not support that combination.
 
 Configure in `.foliate/config.toml`:
 
@@ -203,24 +212,41 @@ quarto_python = ""  # Optional override; empty auto-detects the vault's .venv
 
 ### Publishing generated assets
 
-QMD pages can keep rendered figures in ignored draft storage and publish them through a configurable command adapter. Opt a page in with `publish_assets: true`, then configure `.foliate/assets.toml`:
+Local generated figures are the default: Foliate writes them to
+`assets/quarto/`, and build and deploy copy them with the rest of the site's
+files. No publisher configuration is required.
+
+Sites that do not want generated figures in Git can add
+`.foliate/assets.toml`. Foliate then keeps the figures in
+`.foliate/cache/quarto/assets/`. Local builds and previews remain
+self-contained, while `foliate deploy` uploads only the generated figures
+referenced by public pages and rewrites their URLs in a separate deployment
+copy.
 
 ```toml
 [publisher]
-command = ["aws", "s3", "cp", "{source}", "s3://bucket/{key}"]
-url_template = "https://cdn.example/{key}"
-key_template = "{page_slug}/{filename}"
-draft_root = "assets/drafts/quarto"
-manifest = ".foliate/published-assets.json"
+public_base_url = "https://cdn.example/site-assets"
+key_prefix = "quarto"
+command = [
+  "aws", "s3", "sync",
+  "{staging_prefix_dir}", "s3://bucket/site-assets/{key_prefix}",
+  "--delete",
+  "--cache-control", "no-cache",
+]
 ```
 
-Normal build and watch commands never invoke the uploader. To set the page's `published` field and publish its assets as one step, run:
+`public_base_url` is explicit so Foliate does not have to guess how an S3 bucket
+is exposed (directly, through CloudFront, or through another CDN). Each figure
+has one stable object key, `{key_prefix}/{page_path}/{figure_name}`, and a later
+render overwrites that object. `{staging_prefix_dir}` is the complete current
+tree below `key_prefix`, allowing a scoped `sync --delete` to remove obsolete
+figures without touching unrelated bucket objects. Use revalidating or short
+cache headers when URLs are overwritten. `foliate deploy --dry-run` prepares
+and reports the production rewrite without invoking the uploader.
 
-```bash
-foliate publish-assets "Page.qmd" --set-published
-```
+The v0.8 publisher configuration and `foliate publish-assets` command are not compatible with this deployment-based workflow. Existing publisher users should follow the [v0.9 migration guide](docs/releases/0.9.0.md#migrating-the-generated-asset-publisher) before upgrading.
 
-The command sets `published: true` before it invokes the uploader and restores the original source if rendering or upload fails. It force-renders the page, uploads changed files, records their hashes and public URLs in the manifest, rewrites the cached Markdown, and removes the local draft directory. Without `--set-published`, it refuses an unpublished page. A later build fails if a rendered asset differs from its manifest entry; run `publish-assets` again to update it. Use `--dry-run` to render and report the pending uploads without invoking the command adapter or retaining the frontmatter change.
+See the [v0.9.0 release notes](docs/releases/0.9.0.md) for the watch, Quarto, and deployment changes in this release.
 
 ## Development / CI
 

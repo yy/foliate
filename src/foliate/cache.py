@@ -8,6 +8,21 @@ BUILD_CACHE_FILE = ".build_cache"
 # Special cache keys for global dependencies
 CONFIG_MTIME_KEY = "__config_mtime__"
 TEMPLATES_MTIME_KEY = "__templates_mtime__"
+BUILD_SCHEMA_KEY = "__build_schema__"
+SOURCE_VISIBILITY_CACHE_KEY = "__source_visibility__"
+
+# Increment when generated output semantics change in a way that requires a
+# one-time full rebuild of otherwise cached pages.
+BUILD_SCHEMA_VERSION = 1
+SOURCE_VISIBILITY_CACHE_VERSION = 1
+GLOBAL_CACHE_KEYS = frozenset(
+    {
+        CONFIG_MTIME_KEY,
+        TEMPLATES_MTIME_KEY,
+        BUILD_SCHEMA_KEY,
+        SOURCE_VISIBILITY_CACHE_KEY,
+    }
+)
 
 
 def load_build_cache(cache_file: Path) -> dict:
@@ -145,8 +160,11 @@ def check_global_deps_changed(
         vault_path: Path to the vault directory
 
     Returns:
-        True if config or templates changed since last build
+        True if the build schema, config, or templates changed since last build
     """
+    if cache.get(BUILD_SCHEMA_KEY) != BUILD_SCHEMA_VERSION:
+        return True
+
     current_mtimes = get_global_deps_mtimes(config_path, vault_path)
     return any(
         current_mtime > cache.get(cache_key, 0)
@@ -165,3 +183,4 @@ def update_global_deps_cache(
         vault_path: Path to the vault directory
     """
     cache.update(get_global_deps_mtimes(config_path, vault_path))
+    cache[BUILD_SCHEMA_KEY] = BUILD_SCHEMA_VERSION

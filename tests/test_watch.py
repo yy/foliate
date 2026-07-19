@@ -450,7 +450,11 @@ class TestWatchFunction:
             except KeyboardInterrupt:
                 pass
 
-            mock_build.assert_called_once_with(config=config, force_rebuild=True)
+            mock_build.assert_called_once_with(
+                config=config,
+                force_rebuild=False,
+                force_quarto=False,
+            )
 
     def test_watch_starts_dev_server(self, config):
         """Watch should start a development server."""
@@ -678,7 +682,10 @@ class TestRebuildCallback:
             # Call the rebuild callback
             if handler_captured:
                 handler_captured.rebuild_callback(force=False)
-                mock_build.assert_called_with(config=config, force_rebuild=False)
+                mock_build.assert_called_with(
+                    config=config,
+                    force_rebuild=False,
+                )
 
     def test_rebuild_callback_force_true(self, config):
         """Rebuild callback with force=True should call build with force."""
@@ -709,7 +716,10 @@ class TestRebuildCallback:
 
             if handler_captured:
                 handler_captured.rebuild_callback(force=True)
-                mock_build.assert_called_with(config=config, force_rebuild=True)
+                mock_build.assert_called_with(
+                    config=config,
+                    force_rebuild=True,
+                )
 
 
 class TestRebuildCoordinator:
@@ -736,8 +746,14 @@ class TestRebuildCoordinator:
             coordinator(force=False)
 
         assert mock_build.call_args_list == [
-            call(config=config, force_rebuild=False),
-            call(config=config, force_rebuild=False),
+            call(
+                config=config,
+                force_rebuild=False,
+            ),
+            call(
+                config=config,
+                force_rebuild=False,
+            ),
         ]
 
     def test_queued_force_is_preserved_for_next_rebuild(self, config):
@@ -754,8 +770,14 @@ class TestRebuildCoordinator:
             coordinator(force=False)
 
         assert mock_build.call_args_list == [
-            call(config=config, force_rebuild=False),
-            call(config=config, force_rebuild=True),
+            call(
+                config=config,
+                force_rebuild=False,
+            ),
+            call(
+                config=config,
+                force_rebuild=True,
+            ),
         ]
 
 

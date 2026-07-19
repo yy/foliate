@@ -6,7 +6,14 @@ from unittest.mock import patch
 from jinja2 import Environment
 
 from foliate import build
-from foliate.cache import BUILD_CACHE_FILE, load_build_cache
+from foliate.cache import (
+    BUILD_CACHE_FILE,
+    BUILD_SCHEMA_KEY,
+    BUILD_SCHEMA_VERSION,
+    SOURCE_VISIBILITY_CACHE_KEY,
+    load_build_cache,
+    save_build_cache,
+)
 from foliate.config import Config
 from foliate.page import Page
 from foliate.templates import get_template_loader
@@ -256,6 +263,31 @@ class TestIsPathIgnored:
 
 class TestIterContentSourceFiles:
     """Tests for the shared content source file iterator."""
+
+    def test_prunes_internal_and_ignored_directories_before_descending(
+        self, tmp_path, monkeypatch
+    ):
+        config = Config()
+        config.build.ignored_folders = ["_private"]
+
+        def tracking_walk(vault_path):
+            directories = [".foliate", ".git", ".venv", "_private", "docs"]
+            yield str(vault_path), directories, ["public.md"]
+            assert directories == ["docs"]
+            yield str(vault_path / "docs"), [], ["Story.md"]
+
+        monkeypatch.setattr(build.os, "walk", tracking_walk)
+
+        files = [
+            path.relative_to(tmp_path).as_posix()
+            for path in build.iter_content_source_files(
+                tmp_path,
+                config,
+                {".md", ".qmd"},
+            )
+        ]
+
+        assert files == ["docs/Story.md", "public.md"]
 
     def test_excludes_ignored_folders_and_foliate_internals(self, tmp_path):
         config = Config()
@@ -552,6 +584,105 @@ name = "Test Site"
         build.build(config=config, force_rebuild=False, incremental=True)
 
         assert "NEW" in output_file.read_text()
+
+    def test_incremental_build_rebuilds_when_build_schema_changes(self, tmp_path):
+        """An outdated output schema should force one full HTML rebuild."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[site]\nname = 'Test Site'\n")
+        (vault_path / "test.md").write_text("---\npublic: true\n---\nCurrent content")
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True, incremental=True)
+
+        output_file = vault_path / ".foliate" / "build" / "wiki" / "test" / "index.html"
+        output_file.write_text("stale output")
+        cache_file = config.get_cache_dir() / BUILD_CACHE_FILE
+        cache = load_build_cache(cache_file)
+        cache[BUILD_SCHEMA_KEY] = BUILD_SCHEMA_VERSION - 1
+        save_build_cache(cache_file, cache)
+
+        build.build(config=config, force_rebuild=False, incremental=True)
+
+        assert "Current content" in output_file.read_text()
+        assert "stale output" not in output_file.read_text()
+
+    def test_incremental_build_reuses_unchanged_private_visibility(self, tmp_path):
+        """Only changed private sources should need frontmatter parsing."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[site]\nname = 'Test Site'\n", encoding="utf-8")
+        public_file = vault_path / "public.md"
+        public_file.write_text(
+            "---\npublic: true\n---\nPublic", encoding="utf-8"
+        )
+        private_file = vault_path / "private.md"
+        private_file.write_text(
+            "---\npublic: false\n---\nPrivate", encoding="utf-8"
+        )
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True, incremental=True)
+
+        with patch(
+            "foliate.build.parse_markdown_file",
+            wraps=build.parse_markdown_file,
+        ) as mock_parse:
+            result = build.build(
+                config=config, force_rebuild=False, incremental=True
+            )
+
+        assert result == 1
+        assert [call.args[0] for call in mock_parse.call_args_list] == [public_file]
+
+        private_file.write_text(
+            "---\npublic: true\n---\nNow public", encoding="utf-8"
+        )
+        with patch(
+            "foliate.build.parse_markdown_file",
+            wraps=build.parse_markdown_file,
+        ) as mock_parse:
+            result = build.build(
+                config=config, force_rebuild=False, incremental=True
+            )
+
+        assert result == 2
+        assert {call.args[0] for call in mock_parse.call_args_list} == {
+            private_file,
+            public_file,
+        }
+
+    def test_full_build_prunes_deleted_source_visibility_records(self, tmp_path):
+        """A full inventory should discard metadata for sources no longer present."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+
+        foliate_dir = vault_path / ".foliate"
+        foliate_dir.mkdir()
+        config_path = foliate_dir / "config.toml"
+        config_path.write_text("[site]\nname = 'Test Site'\n", encoding="utf-8")
+        private_file = vault_path / "private.md"
+        private_file.write_text(
+            "---\npublic: false\n---\nPrivate", encoding="utf-8"
+        )
+
+        config = Config.load(config_path)
+        build.build(config=config, force_rebuild=True, incremental=True)
+        private_file.unlink()
+
+        build.build(config=config, force_rebuild=False, incremental=True)
+
+        cache = load_build_cache(config.get_cache_dir() / BUILD_CACHE_FILE)
+        visibility_cache = cache[SOURCE_VISIBILITY_CACHE_KEY]
+        assert str(private_file) not in visibility_cache["files"]
 
     def test_search_index_uses_page_base_url_for_homepage_content(self, tmp_path):
         """search.json should use / URLs for _homepage content."""
@@ -1307,6 +1438,89 @@ home_redirect = "test"
 
 class TestBuildStats:
     """Tests for build statistics reporting."""
+
+    def test_force_quarto_can_be_decoupled_from_full_site_rebuild(
+        self, tmp_path, monkeypatch
+    ):
+        """A caller can rebuild HTML without rerendering unchanged QMD files."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+        (vault_path / "page.md").write_text(
+            "---\npublic: true\n---\nPage", encoding="utf-8"
+        )
+
+        config = Config()
+        config.vault_path = vault_path
+        config.advanced.quarto_enabled = True
+        monkeypatch.setattr(
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: False
+        )
+
+        with patch("foliate.quarto.preprocess_quarto") as mock_preprocess:
+            build.build(
+                config=config,
+                force_rebuild=True,
+                force_quarto=False,
+            )
+
+        mock_preprocess.assert_called_once()
+        call_args = mock_preprocess.call_args
+        assert call_args.args == (config,)
+        assert call_args.kwargs["force"] is False
+        assert list(call_args.kwargs["source_files"]) == []
+
+    def test_configured_publisher_copies_cached_figures_into_local_build(
+        self, tmp_path
+    ):
+        """S3 opt-in must not make ordinary builds depend on remote assets."""
+        (tmp_path / "page.md").write_text(
+            "---\npublic: true\n---\nPage", encoding="utf-8"
+        )
+        foliate_dir = tmp_path / ".foliate"
+        foliate_dir.mkdir()
+        (foliate_dir / "assets.toml").write_text(
+            "[publisher]\n"
+            'command = ["upload", "{staging_dir}"]\n'
+            'public_base_url = "https://cdn.example/assets"\n',
+            encoding="utf-8",
+        )
+        generated = foliate_dir / "cache" / "quarto" / "assets" / "page"
+        generated.mkdir(parents=True)
+        (generated / "plot.png").write_bytes(b"plot")
+
+        config = Config(vault_path=tmp_path)
+        result = build.build(config=config, force_rebuild=True)
+
+        assert result == 1
+        assert (
+            foliate_dir / "build" / "assets" / "quarto" / "page" / "plot.png"
+        ).read_bytes() == b"plot"
+
+    def test_build_selects_content_sources_once(self, tmp_path, monkeypatch):
+        """Build should share one source inventory across all phases."""
+        vault_path = tmp_path / "vault"
+        vault_path.mkdir()
+        (vault_path / "page.md").write_text(
+            "---\npublic: true\n---\nPage", encoding="utf-8"
+        )
+
+        config = Config()
+        config.vault_path = vault_path
+        config.advanced.quarto_enabled = True
+        monkeypatch.setattr(
+            "foliate.quarto.is_quarto_preprocessing_available", lambda: False
+        )
+
+        with (
+            patch(
+                "foliate.build.select_content_sources",
+                wraps=build.select_content_sources,
+            ) as mock_select,
+            patch("foliate.quarto.preprocess_quarto"),
+        ):
+            build.build(config=config, force_rebuild=True)
+
+        assert mock_select.call_count == 1
 
     def test_iter_public_files_reads_cached_markdown_for_qmd(
         self, tmp_path, monkeypatch

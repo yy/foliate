@@ -733,6 +733,7 @@ target = "{target.resolve().as_posix()}"
             runner.invoke(main, ["deploy"])
 
             assert mock_deploy.called
+            assert mock_deploy.call_args.kwargs["build_first"] is True
 
     @patch("foliate.deploy.deploy_github_pages")
     def test_dry_run_flag(self, mock_deploy):
@@ -797,8 +798,8 @@ target = "{target.resolve().as_posix()}"
             assert call_kwargs.get("message") == "Custom message"
 
     @patch("foliate.deploy.deploy_github_pages")
-    def test_build_flag(self, mock_deploy):
-        """Should pass build_first=True to deploy function."""
+    def test_no_build_flag(self, mock_deploy):
+        """Should allow deploying an existing build without rebuilding."""
         mock_deploy.return_value = True
 
         runner = CliRunner()
@@ -821,11 +822,11 @@ target = "{target.resolve().as_posix()}"
 """
             )
 
-            runner.invoke(main, ["deploy", "--build"])
+            runner.invoke(main, ["deploy", "--no-build"])
 
             mock_deploy.assert_called()
             call_kwargs = mock_deploy.call_args[1]
-            assert call_kwargs.get("build_first") is True
+            assert call_kwargs.get("build_first") is False
 
     @patch("foliate.deploy.deploy_github_pages")
     def test_deploy_failure_exits_with_error(self, mock_deploy):

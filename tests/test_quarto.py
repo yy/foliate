@@ -198,6 +198,74 @@ class TestPreprocessQuarto:
         render_qmd.assert_called_once()
         assert render_qmd.call_args.kwargs["qmd_file"] == lower_qmd
 
+    def test_bulk_mode_uses_preselected_source_files(self, monkeypatch, tmp_path):
+        """A shared build inventory should avoid rediscovering QMD sources."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+
+        selected_qmd = tmp_path / "selected.qmd"
+        selected_qmd.write_text("# Selected")
+        (tmp_path / "other.qmd").write_text("# Other")
+        generated_md = selected_qmd.with_suffix(".md")
+
+        def fake_render_qmd(**_kwargs):
+            generated_md.write_text("---\ntitle: Selected\n---\n# Rendered\n")
+            return generated_md
+
+        render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
+        _enable_renderer(monkeypatch, render_qmd)
+
+        result = preprocess_quarto(config, source_files=[selected_qmd])
+
+        assert list(result) == [str(selected_qmd)]
+        render_qmd.assert_called_once()
+        assert render_qmd.call_args.kwargs["qmd_file"] == selected_qmd
+
+    def test_bulk_mode_prunes_artifacts_for_renamed_sources(
+        self, monkeypatch, tmp_path
+    ):
+        """Bulk preprocessing should remove generated Markdown without a QMD."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+
+        current_qmd = tmp_path / "current.qmd"
+        current_qmd.write_text("# Current", encoding="utf-8")
+        current_cached = (
+            tmp_path / ".foliate" / "cache" / "quarto" / "rendered" / "current.md"
+        )
+        current_cached.parent.mkdir(parents=True)
+        current_cached.write_text("# Current render", encoding="utf-8")
+
+        stale_cached = current_cached.parent / "old" / "renamed.md"
+        stale_cached.parent.mkdir()
+        stale_cached.write_text("# Stale render", encoding="utf-8")
+
+        preview_root = tmp_path / "_private" / "quarto-preview"
+        stale_preview = preview_root / "old" / "renamed.md"
+        stale_preview.parent.mkdir(parents=True)
+        stale_preview.write_text(
+            "<!-- GENERATED FROM old/renamed.qmd; DO NOT EDIT -->\n\nStale",
+            encoding="utf-8",
+        )
+        handwritten_preview = preview_root / "keep.md"
+        handwritten_preview.write_text("Hand-written note", encoding="utf-8")
+
+        render_qmd = Mock(name="render_qmd")
+        _enable_renderer(monkeypatch, render_qmd)
+
+        result = preprocess_quarto(config, source_files=[current_qmd])
+
+        assert result == {str(current_qmd): str(current_cached)}
+        assert current_cached.exists()
+        assert not stale_cached.exists()
+        assert not stale_cached.parent.exists()
+        assert not stale_preview.exists()
+        assert not stale_preview.parent.exists()
+        assert handwritten_preview.read_text(encoding="utf-8") == "Hand-written note"
+        render_qmd.assert_not_called()
+
     def test_single_file_writes_cache_and_private_preview(self, monkeypatch, tmp_path):
         """Single-file preprocessing writes cached markdown and Obsidian preview."""
         config = Config()
@@ -216,7 +284,8 @@ class TestPreprocessQuarto:
             )
             return generated_md
 
-        _enable_renderer(monkeypatch, fake_render_qmd)
+        render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
+        _enable_renderer(monkeypatch, render_qmd)
 
         result = preprocess_quarto(config, single_file=qmd_file)
 
@@ -241,6 +310,96 @@ class TestPreprocessQuarto:
             "[[Link]]\n"
         )
         assert not generated_md.exists()
+        assert render_qmd.call_args.kwargs["refresh_cache"] is False
+
+    def test_force_refreshes_quarto_execution_cache(self, monkeypatch, tmp_path):
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+
+        qmd_file = tmp_path / "paper.qmd"
+        qmd_file.write_text("# Source", encoding="utf-8")
+        generated_md = qmd_file.with_suffix(".md")
+
+        def fake_render_qmd(**_kwargs):
+            generated_md.write_text("# Rendered\n", encoding="utf-8")
+            return generated_md
+
+        render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
+        _enable_renderer(monkeypatch, render_qmd)
+
+        result = preprocess_quarto(config, force=True, single_file=qmd_file)
+
+        assert result
+        assert render_qmd.call_args.kwargs["refresh_cache"] is True
+
+    def test_configured_publisher_renders_assets_to_cache(
+        self, monkeypatch, tmp_path
+    ):
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+        foliate_dir = tmp_path / ".foliate"
+        foliate_dir.mkdir()
+        (foliate_dir / "assets.toml").write_text(
+            "[publisher]\n"
+            'command = ["upload", "{staging_dir}"]\n'
+            'public_base_url = "https://cdn.example/assets"\n',
+            encoding="utf-8",
+        )
+
+        qmd_file = tmp_path / "paper.qmd"
+        qmd_file.write_text("# Source", encoding="utf-8")
+        generated_md = qmd_file.with_suffix(".md")
+
+        def fake_render_qmd(**_kwargs):
+            generated_md.write_text("# Rendered\n", encoding="utf-8")
+            return generated_md
+
+        render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
+        _enable_renderer(monkeypatch, render_qmd)
+
+        preprocess_quarto(config, single_file=qmd_file)
+
+        assert render_qmd.call_args.kwargs["assets_dir"] == (
+            foliate_dir / "cache" / "quarto" / "assets"
+        )
+        assert render_qmd.call_args.kwargs["asset_url_prefix"] == "/assets/quarto"
+
+    def test_missing_cached_publisher_assets_force_rerender(
+        self, monkeypatch, tmp_path
+    ):
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+        foliate_dir = tmp_path / ".foliate"
+        foliate_dir.mkdir()
+        (foliate_dir / "assets.toml").write_text(
+            "[publisher]\n"
+            'command = ["upload", "{staging_dir}"]\n'
+            'public_base_url = "https://cdn.example/assets"\n',
+            encoding="utf-8",
+        )
+
+        qmd_file = tmp_path / "paper.qmd"
+        qmd_file.write_text("# Source", encoding="utf-8")
+        cached_md = foliate_dir / "cache" / "quarto" / "rendered" / "paper.md"
+        cached_md.parent.mkdir(parents=True)
+        cached_md.write_text(
+            "![](/assets/drafts/quarto/paper/plot.png)\n", encoding="utf-8"
+        )
+        generated_md = qmd_file.with_suffix(".md")
+
+        def fake_render_qmd(**_kwargs):
+            generated_md.write_text("# Rerendered\n", encoding="utf-8")
+            return generated_md
+
+        render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
+        _enable_renderer(monkeypatch, render_qmd)
+
+        preprocess_quarto(config, single_file=qmd_file)
+
+        render_qmd.assert_called_once()
 
     def test_existing_cache_recreates_missing_preview_without_render(
         self, monkeypatch, tmp_path
@@ -300,7 +459,7 @@ class TestPreprocessQuarto:
         render_qmd.assert_not_called()
 
     def test_failed_render_preserves_existing_assets(self, monkeypatch, tmp_path):
-        """A render that fails restores the previous per-document assets."""
+        """A renderer failure does not remove previous per-document assets."""
         config = Config()
         config.advanced = AdvancedConfig(quarto_enabled=True)
         config.vault_path = tmp_path
@@ -313,9 +472,6 @@ class TestPreprocessQuarto:
         (asset_dir / "old.png").write_text("old", encoding="utf-8")
 
         def fake_render_qmd(**_kwargs):
-            # Partially write new output, then fail.
-            asset_dir.mkdir(parents=True, exist_ok=True)
-            (asset_dir / "new.png").write_text("new", encoding="utf-8")
             return None
 
         _enable_renderer(monkeypatch, fake_render_qmd)
@@ -324,8 +480,6 @@ class TestPreprocessQuarto:
 
         assert result == {}
         assert (asset_dir / "old.png").read_text(encoding="utf-8") == "old"
-        assert not (asset_dir / "new.png").exists()
-        assert not (tmp_path / "assets" / "quarto" / "paper.foliate-bak").exists()
 
 
 class TestCleanRenderedMarkdown:

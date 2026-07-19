@@ -34,16 +34,19 @@ Update both version definitions:
 1. `pyproject.toml` (`[project].version`)
 2. `src/foliate/__init__.py` (`__version__`)
 
+Update or add the matching file in `docs/releases/`, including migration steps for incompatible CLI or configuration changes.
+
 ## Local Validation
 
 Run tests and build locally before tagging:
 
 ```bash
+uv run ruff check .
 uv run pytest -q
 uv build
 ```
 
-Or run the local CI parity target:
+Run mypy, pytest, and the package build through the local CI target:
 
 ```bash
 make ci
@@ -74,8 +77,8 @@ make publish
 2. Install and smoke test in a fresh environment:
 
    ```bash
-   python -m pip install foliate==X.Y.Z
-   foliate --version
+   uvx --from foliate==X.Y.Z foliate --version
+   uvx --from foliate==X.Y.Z foliate --help
    ```
 
 ## Recovery Notes

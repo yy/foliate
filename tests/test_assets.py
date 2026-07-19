@@ -1,5 +1,6 @@
 """Tests for assets module."""
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -95,6 +96,26 @@ def test_copy_directory_incremental_replaces_conflicting_empty_target_file(tmp_p
     copy_directory_incremental(src_dir, target_dir, force_rebuild=False)
 
     assert target_dir.is_dir()
+
+
+def test_copy_directory_incremental_tolerates_target_created_during_copy(
+    monkeypatch, tmp_path
+):
+    src_dir = tmp_path / "src"
+    target_dir = tmp_path / "target"
+    src_dir.mkdir()
+    _write(src_dir / "image.png", "image")
+    real_copytree = shutil.copytree
+
+    def copytree_after_target_appears(src, dst, **kwargs):
+        Path(dst).mkdir(parents=True)
+        return real_copytree(src, dst, **kwargs)
+
+    monkeypatch.setattr("foliate.assets.shutil.copytree", copytree_after_target_appears)
+
+    copy_directory_incremental(src_dir, target_dir, force_rebuild=False)
+
+    assert (target_dir / "image.png").read_text(encoding="utf-8") == "image"
 
 
 def test_copy_directory_incremental_skips_matching_tree(monkeypatch, tmp_path):
