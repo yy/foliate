@@ -85,8 +85,9 @@ def sanitize_wikilinks(
     for span in private_spans:
         wiki_path_attr = span.get("data-wiki-path", "")
         wiki_path = wiki_path_attr if isinstance(wiki_path_attr, str) else ""
-        if wiki_path and wiki_path in public_pages:
-            url_path = slugify_path(wiki_path) if slug_to_original else wiki_path
+        resolved = _resolve_target(wiki_path) if wiki_path else None
+        if resolved:
+            url_path = slugify_path(resolved) if slug_to_original else resolved
             href = f"/{wiki_prefix}/{url_path}/" if wiki_prefix else f"/{url_path}/"
             span.name = "a"
             span.attrs.clear()
