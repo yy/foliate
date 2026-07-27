@@ -14,6 +14,8 @@ from urllib.parse import quote
 
 import frontmatter
 
+from .assets import robust_rmtree
+
 _QUARTO_FRONTMATTER_KEYS = {
     "bibliography",
     "cache",
@@ -275,6 +277,9 @@ def _sync_figure_assets(source_dir: Path | None, target_dir: Path) -> None:
         else {}
     )
 
+    if target_dir.is_symlink() or (target_dir.exists() and not target_dir.is_dir()):
+        robust_rmtree(target_dir)
+
     if sources:
         target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -285,9 +290,10 @@ def _sync_figure_assets(source_dir: Path | None, target_dir: Path) -> None:
             and source.stat().st_size == destination.stat().st_size
         )
         if same_size:
-            with source.open("rb") as source_file, destination.open(
-                "rb"
-            ) as destination_file:
+            with (
+                source.open("rb") as source_file,
+                destination.open("rb") as destination_file,
+            ):
                 source_hash = hashlib.file_digest(source_file, "sha256").digest()
                 destination_hash = hashlib.file_digest(
                     destination_file, "sha256"

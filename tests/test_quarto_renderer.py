@@ -239,13 +239,16 @@ def test_render_qmd_refreshes_execution_cache_when_requested(monkeypatch, tmp_pa
 
     monkeypatch.setattr("foliate.quarto_renderer.subprocess.run", fake_run)
 
-    assert render_qmd(
-        qmd_file,
-        tmp_path,
-        tmp_path / "cache",
-        tmp_path / "assets",
-        refresh_cache=True,
-    ) == output_md
+    assert (
+        render_qmd(
+            qmd_file,
+            tmp_path,
+            tmp_path / "cache",
+            tmp_path / "assets",
+            refresh_cache=True,
+        )
+        == output_md
+    )
     assert "--cache-refresh" in observed["args"]
 
 
@@ -254,8 +257,7 @@ def test_render_qmd_disables_jupyter_cache_for_inline_expressions(
 ):
     qmd_file = tmp_path / "page.qmd"
     qmd_file.write_text(
-        "```{python}\nvalue = 2\n```\n\n"
-        "The value is `{python} value`.\n",
+        "```{python}\nvalue = 2\n```\n\nThe value is `{python} value`.\n",
         encoding="utf-8",
     )
     output_md = qmd_file.with_suffix(".md")
@@ -269,13 +271,16 @@ def test_render_qmd_disables_jupyter_cache_for_inline_expressions(
 
     monkeypatch.setattr("foliate.quarto_renderer.subprocess.run", fake_run)
 
-    assert render_qmd(
-        qmd_file,
-        tmp_path,
-        tmp_path / "cache",
-        tmp_path / "assets",
-        refresh_cache=True,
-    ) == output_md
+    assert (
+        render_qmd(
+            qmd_file,
+            tmp_path,
+            tmp_path / "cache",
+            tmp_path / "assets",
+            refresh_cache=True,
+        )
+        == output_md
+    )
     assert "--no-cache" in observed["args"]
     assert "--cache" not in observed["args"]
     assert "--cache-refresh" not in observed["args"]
@@ -304,6 +309,19 @@ def test_sync_figure_assets_preserves_unchanged_mtime_and_removes_stale(tmp_path
     assert not (target / "stale.png").exists()
 
 
+def test_sync_figure_assets_replaces_conflicting_target_file(tmp_path):
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    (generated / "plot.png").write_bytes(b"new")
+
+    target = tmp_path / "assets"
+    target.write_bytes(b"conflict")
+
+    _sync_figure_assets(generated, target)
+
+    assert (target / "plot.png").read_bytes() == b"new"
+
+
 def test_failed_render_leaves_existing_assets_untouched(monkeypatch, tmp_path):
     qmd_file = tmp_path / "page.qmd"
     qmd_file.write_text("# Page\n", encoding="utf-8")
@@ -319,9 +337,9 @@ def test_failed_render_leaves_existing_assets_untouched(monkeypatch, tmp_path):
 
     monkeypatch.setattr("foliate.quarto_renderer.subprocess.run", fake_run)
 
-    assert render_qmd(
-        qmd_file, tmp_path, tmp_path / "cache", tmp_path / "assets"
-    ) is None
+    assert (
+        render_qmd(qmd_file, tmp_path, tmp_path / "cache", tmp_path / "assets") is None
+    )
     assert (target / "old.png").read_bytes() == b"old"
     assert not (target / "new.png").exists()
     assert not (tmp_path / "page_files").exists()
