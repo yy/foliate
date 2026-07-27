@@ -3,12 +3,14 @@
 Converts .qmd files to cached .md before the main build.
 """
 
+import shutil
 import threading
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import quote
 
 from .config import Config
 from .logging import debug
@@ -220,6 +222,67 @@ def _preview_is_stale(preview_md: Path, cached_md: Path) -> bool:
     return preview_md.stat().st_mtime < cached_md.stat().st_mtime
 
 
+def _preview_asset_dir(preview_md: Path) -> Path:
+    """Return the generated asset directory beside an Obsidian preview."""
+    return preview_md.with_suffix(".assets")
+
+
+def _preview_assets_missing(config: Config, preview_md: Path, qmd_file: Path) -> bool:
+    """Return whether a publisher-backed preview is missing its local assets."""
+    from .published_assets import publisher_is_configured
+
+    if not publisher_is_configured(config):
+        return False
+
+    source_dir = get_quarto_asset_dir(config, qmd_file)
+    if source_dir is None or not source_dir.is_dir():
+        return False
+
+    preview_dir = _preview_asset_dir(preview_md)
+    if not preview_dir.is_dir():
+        return True
+
+    source_files = {
+        path.relative_to(source_dir): path.stat().st_size
+        for path in source_dir.rglob("*")
+        if path.is_file()
+    }
+    preview_files = {
+        path.relative_to(preview_dir): path.stat().st_size
+        for path in preview_dir.rglob("*")
+        if path.is_file()
+    }
+    return source_files != preview_files
+
+
+def _localize_preview_assets(
+    config: Config, content: str, preview_md: Path, qmd_file: Path
+) -> str:
+    """Copy publisher-backed figures beside a preview and rewrite their URLs."""
+    from .assets import robust_rmtree
+    from .published_assets import get_generated_asset_root, publisher_is_configured
+
+    if not publisher_is_configured(config):
+        return content
+
+    source_dir = get_quarto_asset_dir(config, qmd_file)
+    preview_assets = _preview_asset_dir(preview_md)
+    if preview_assets.exists():
+        robust_rmtree(preview_assets)
+
+    if source_dir is None or not source_dir.is_dir():
+        return content
+
+    relative_assets = source_dir.relative_to(get_generated_asset_root(config))
+    web_prefix = f"/assets/quarto/{quote(relative_assets.as_posix())}/"
+    if web_prefix not in content:
+        return content
+
+    shutil.copytree(source_dir, preview_assets)
+    local_prefix = f"{quote(preview_assets.name)}/"
+    return content.replace(web_prefix, local_prefix)
+
+
 def _write_preview(
     config: Config, preview_md: Path, rendered_md: Path, qmd_file: Path
 ) -> None:
@@ -232,6 +295,7 @@ def _write_preview(
 
     preview_md.parent.mkdir(parents=True, exist_ok=True)
     content = rendered_md.read_text(encoding="utf-8")
+    content = _localize_preview_assets(config, content, preview_md, qmd_file)
     warning = f"<!-- GENERATED FROM {rel_source.as_posix()}; DO NOT EDIT -->\n\n"
     lines = content.splitlines(keepends=True)
     if lines and lines[0].strip() == "---":
@@ -265,10 +329,11 @@ def _prune_markdown_artifacts(
     expected_files: set[Path],
     *,
     require_generated_marker: bool,
-) -> None:
+) -> set[Path]:
     """Remove stale generated Markdown files from a managed artifact tree."""
+    removed: set[Path] = set()
     if not root.is_dir():
-        return
+        return removed
 
     for artifact in root.rglob("*.md"):
         if artifact in expected_files:
@@ -288,7 +353,9 @@ def _prune_markdown_artifacts(
             artifact.unlink()
         except OSError:
             continue
+        removed.add(artifact)
         _remove_empty_artifact_parents(artifact.parent, root)
+    return removed
 
 
 def _prune_stale_quarto_markdown(
@@ -319,11 +386,19 @@ def _prune_stale_quarto_markdown(
         for source_file in source_files
         if (preview_path := get_preview_markdown_path(config, source_file)) is not None
     }
-    _prune_markdown_artifacts(
+    removed_previews = _prune_markdown_artifacts(
         preview_root,
         expected_previews,
         require_generated_marker=True,
     )
+    from .assets import robust_rmtree
+
+    for preview in removed_previews:
+        preview_assets = _preview_asset_dir(preview)
+        if not preview_assets.exists():
+            continue
+        robust_rmtree(preview_assets)
+        _remove_empty_artifact_parents(preview_assets.parent, preview_root)
 
 
 def preprocess_quarto(
@@ -388,7 +463,10 @@ def preprocess_quarto(
 
         if not force and not needs_render:
             preview_md = get_preview_markdown_path(config, qmd_file)
-            if preview_md is not None and _preview_is_stale(preview_md, cached_md):
+            if preview_md is not None and (
+                _preview_is_stale(preview_md, cached_md)
+                or _preview_assets_missing(config, preview_md, qmd_file)
+            ):
                 _write_preview(config, preview_md, cached_md, qmd_file)
             return str(cached_md)
 

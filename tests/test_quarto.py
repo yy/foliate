@@ -249,6 +249,9 @@ class TestPreprocessQuarto:
             "<!-- GENERATED FROM old/renamed.qmd; DO NOT EDIT -->\n\nStale",
             encoding="utf-8",
         )
+        stale_preview_assets = stale_preview.with_suffix(".assets")
+        stale_preview_assets.mkdir()
+        (stale_preview_assets / "plot.png").write_bytes(b"figure")
         handwritten_preview = preview_root / "keep.md"
         handwritten_preview.write_text("Hand-written note", encoding="utf-8")
 
@@ -262,6 +265,7 @@ class TestPreprocessQuarto:
         assert not stale_cached.exists()
         assert not stale_cached.parent.exists()
         assert not stale_preview.exists()
+        assert not stale_preview_assets.exists()
         assert not stale_preview.parent.exists()
         assert handwritten_preview.read_text(encoding="utf-8") == "Hand-written note"
         render_qmd.assert_not_called()
@@ -333,9 +337,7 @@ class TestPreprocessQuarto:
         assert result
         assert render_qmd.call_args.kwargs["refresh_cache"] is True
 
-    def test_configured_publisher_renders_assets_to_cache(
-        self, monkeypatch, tmp_path
-    ):
+    def test_configured_publisher_renders_assets_to_cache(self, monkeypatch, tmp_path):
         config = Config()
         config.advanced = AdvancedConfig(quarto_enabled=True)
         config.vault_path = tmp_path
@@ -365,6 +367,61 @@ class TestPreprocessQuarto:
             foliate_dir / "cache" / "quarto" / "assets"
         )
         assert render_qmd.call_args.kwargs["asset_url_prefix"] == "/assets/quarto"
+
+    def test_configured_publisher_localizes_assets_for_obsidian_preview(
+        self, monkeypatch, tmp_path
+    ):
+        """Publisher-backed figures remain available in the Obsidian preview."""
+        config = Config()
+        config.advanced = AdvancedConfig(quarto_enabled=True)
+        config.vault_path = tmp_path
+        foliate_dir = tmp_path / ".foliate"
+        foliate_dir.mkdir()
+        (foliate_dir / "assets.toml").write_text(
+            "[publisher]\n"
+            'command = ["upload", "{staging_dir}"]\n'
+            'public_base_url = "https://cdn.example/assets"\n',
+            encoding="utf-8",
+        )
+
+        qmd_file = tmp_path / "Bike access.qmd"
+        qmd_file.write_text("# Source", encoding="utf-8")
+        generated_md = qmd_file.with_suffix(".md")
+
+        def fake_render_qmd(**kwargs):
+            asset_dir = kwargs["assets_dir"] / "Bike access"
+            asset_dir.mkdir(parents=True)
+            (asset_dir / "plot.png").write_bytes(b"figure")
+            generated_md.write_text(
+                "![|650](/assets/quarto/Bike%20access/plot.png)\n",
+                encoding="utf-8",
+            )
+            return generated_md
+
+        render_qmd = Mock(name="render_qmd", side_effect=fake_render_qmd)
+        _enable_renderer(monkeypatch, render_qmd)
+
+        preprocess_quarto(config, single_file=qmd_file)
+
+        cached_md = foliate_dir / "cache" / "quarto" / "rendered" / "Bike access.md"
+        preview_md = tmp_path / "_private" / "quarto-preview" / "Bike access.md"
+        preview_asset = (
+            tmp_path / "_private" / "quarto-preview" / "Bike access.assets" / "plot.png"
+        )
+
+        assert "/assets/quarto/Bike%20access/plot.png" in cached_md.read_text(
+            encoding="utf-8"
+        )
+        assert "![|650](Bike%20access.assets/plot.png)" in preview_md.read_text(
+            encoding="utf-8"
+        )
+        assert preview_asset.read_bytes() == b"figure"
+
+        preview_asset.unlink()
+        preprocess_quarto(config, single_file=qmd_file)
+
+        assert preview_asset.read_bytes() == b"figure"
+        render_qmd.assert_called_once()
 
     def test_missing_cached_publisher_assets_force_rerender(
         self, monkeypatch, tmp_path
