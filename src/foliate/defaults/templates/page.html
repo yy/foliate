@@ -21,6 +21,12 @@
     {% endif %}
 </header>
 
+{% if floating_toc and page.toc %}
+<nav class="page-toc" aria-label="Table of contents">
+    {{ page.toc|safe }}
+</nav>
+{% endif %}
+
 <section class="content">
     {{ content|safe }}
 </section>

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `build.floating_toc` config option: floating table of contents in the left margin on wide viewports (≥1320px), rendered from page headings. Off by default.
+- `.nojekyll` is written to the build output so GitHub Pages skips Jekyll processing (#16).
+
+### Fixed
+- Lists directly following a paragraph (no blank line) now render as proper lists, matching CommonMark/Obsidian behavior (#18). Bullet lists and ordered lists starting at `1.` may interrupt a paragraph; other numbers (e.g. a line starting `2019.`) stay prose.
+
 ## 0.10.0 - 2026-07-31
 
 ### Changed

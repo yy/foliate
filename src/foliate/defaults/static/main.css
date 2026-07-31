@@ -739,3 +739,52 @@ article .katex {
     padding-left: 1.5rem;
   }
 }
+
+/* ============================================================================
+   FLOATING TABLE OF CONTENTS (build.floating_toc)
+   Shown in the left gutter only when the viewport is wide enough.
+   ============================================================================ */
+
+.page-toc {
+  display: none;
+}
+
+@media (min-width: 1320px) {
+  .page-toc {
+    display: block;
+    position: fixed;
+    top: 6rem;
+    right: calc(50% + 420px);
+    width: 220px;
+    max-height: calc(100vh - 8rem);
+    overflow-y: auto;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+
+  .page-toc .toc > ul {
+    padding-left: 0;
+  }
+
+  .page-toc ul {
+    list-style: none;
+    margin: 0;
+    padding-left: 0.9rem;
+  }
+
+  .page-toc li {
+    margin: 0.35rem 0;
+    width: auto;
+  }
+
+  .page-toc a {
+    color: var(--text-secondary);
+    text-decoration: none;
+  }
+
+  .page-toc a:hover {
+    color: var(--color-primary-dark);
+    text-decoration: underline;
+  }
+}

@@ -7,7 +7,7 @@ from pathlib import Path
 from .markdown_utils import (
     extract_description,
     extract_first_image,
-    render_markdown,
+    render_markdown_with_toc,
     slugify_path,
 )
 
@@ -208,6 +208,7 @@ class Page:
     description: str
     image: str | None
     tags: list[str] = field(default_factory=list)
+    toc: str = ""
     file_modified: str | None = None
     file_mtime: float | None = None
     is_published: bool = False
@@ -234,13 +235,19 @@ class Page:
         image = _resolve_image(meta, markdown_content)
         file_metadata = _resolve_file_metadata(file_path)
         page_dates = _resolve_page_dates(meta, file_metadata.file_mtime)
+        html, toc = (
+            render_markdown_with_toc(markdown_content, base_url)
+            if render_html
+            else ("", "")
+        )
 
         return cls(
             path=page_path,
             title=_coerce_str(meta.get("title"), fallback=page_path) or page_path,
             meta=meta,
             body=markdown_content,
-            html=render_markdown(markdown_content, base_url) if render_html else "",
+            html=html,
+            toc=toc,
             published=published,
             date=meta.get("date"),
             url=page_url,

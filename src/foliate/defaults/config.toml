@@ -55,6 +55,10 @@ nl2br = false
 # Legacy space-based URLs will redirect to the slugified version
 slugify_urls = true
 
+# Floating table of contents in the left margin on wide viewports
+# Rendered from the page's headings; hidden on narrow screens
+floating_toc = false
+
 
 [visibility]
 # Foliate uses a two-tiered visibility system:

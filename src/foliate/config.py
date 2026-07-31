@@ -319,6 +319,7 @@ class BuildConfig:
     slugify_urls: bool = False  # Replace spaces with hyphens in URLs
     recent_pages: int = 20  # Number of recent pages shown on the home page
     new_page_window: int = 30  # Days within which a page is considered "new"
+    floating_toc: bool = False  # Floating table of contents on wide viewports
 
 
 @dataclass
@@ -671,6 +672,7 @@ class Config:
                 "author_link": self.footer.author_link,
             },
             "home_page": self.build.home_page,
+            "floating_toc": self.build.floating_toc,
             "feed_enabled": self.feed.enabled,
             "feed_title": self.feed.title or self.site.name,
             "search_index_url": self.base_urls["wiki"] + "search.json",
