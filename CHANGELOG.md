@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 - 2026-07-31
 
 ### Added
 - `build.floating_toc` config option: floating table of contents in the left margin on wide viewports (≥1320px), rendered from page headings. Off by default.

@@ -246,7 +246,7 @@ and reports the production rewrite without invoking the uploader.
 
 The v0.8 publisher configuration and `foliate publish-assets` command are not compatible with this deployment-based workflow. Existing publisher users should follow the [v0.9 migration guide](docs/releases/0.9.0.md#migrating-the-generated-asset-publisher) before upgrading.
 
-See the [v0.10.0 release notes](docs/releases/0.10.0.md) for the autolink replacement and Quarto fixes in this release.
+See the [v0.11.0 release notes](docs/releases/0.11.0.md) for the floating TOC and rendering fixes in this release.
 
 ## Development / CI
 
