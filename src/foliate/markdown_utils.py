@@ -19,6 +19,7 @@ MARKDOWN_EXTENSIONS = [
     "extra",  # tables, footnotes, etc.
     "smarty",
     "sane_lists",
+    "foliate.breakless_lists",
     "toc",
     "foliate.obsidian_image_size",
 ]
@@ -303,20 +304,21 @@ def _strip_backticks_in_wikilink_targets(content: str) -> str:
     return _WIKILINK_BACKTICK_RE.sub(_replace, content)
 
 
-def render_markdown(content: str, base_url: str = "/wiki/") -> str:
-    """Render markdown to HTML with extensions.
+def render_markdown_with_toc(content: str, base_url: str = "/wiki/") -> tuple[str, str]:
+    """Render markdown to HTML and return (html, toc_html).
+
+    toc_html is the table-of-contents fragment from the ``toc`` extension,
+    or "" when the page has no headings.
 
     Args:
         content: Markdown content
         base_url: Base URL for wikilinks
-
-    Returns:
-        HTML string
     """
     md = get_markdown_converter(base_url)
     md.reset()
     content = _strip_backticks_in_wikilink_targets(content)
     html_content = md.convert(content)
+    toc_html = getattr(md, "toc", "") if getattr(md, "toc_tokens", None) else ""
 
     # Process asset paths to ensure they work with site structure
     html_content = process_asset_paths(html_content)
@@ -327,7 +329,20 @@ def render_markdown(content: str, base_url: str = "/wiki/") -> str:
             html_content, wiki_base_url=_WIKI_BASE_URL
         )
 
-    return html_content
+    return html_content, toc_html
+
+
+def render_markdown(content: str, base_url: str = "/wiki/") -> str:
+    """Render markdown to HTML with extensions.
+
+    Args:
+        content: Markdown content
+        base_url: Base URL for wikilinks
+
+    Returns:
+        HTML string
+    """
+    return render_markdown_with_toc(content, base_url)[0]
 
 
 def process_asset_paths(html_content: str) -> str:
