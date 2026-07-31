@@ -32,7 +32,6 @@ dependencies = [
     "pygments>=2.15",
     "markdown-katex>=202406.1035",
     "mdx-wikilink-plus>=1.4",
-    "mdx-linkify>=2.1",
     "beautifulsoup4>=4.12",
 ]
 
@@ -83,6 +82,7 @@ module = [
     "jinja2",
     "markdown",
     "markdown.preprocessors",
+    "markdown.treeprocessors",
     "watchdog.events",
     "watchdog.observers",
 ]

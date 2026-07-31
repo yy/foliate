@@ -15,7 +15,7 @@ MARKDOWN_EXTENSIONS = [
     "codehilite",
     "markdown_katex",
     "mdx_wikilink_plus",
-    "mdx_linkify",
+    "foliate.autolink",
     "extra",  # tables, footnotes, etc.
     "smarty",
     "sane_lists",

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Replace `mdx-linkify`/`bleach` (both unmaintained) with a built-in autolink extension. Any URL with an explicit `http(s)://` scheme is now linked, including modern TLDs (`.dev`, `.app`, ...) that bleach's pre-2013 TLD list missed. Schemeless text like `example.dev` is no longer a candidate for linking (bleach never linked modern TLDs anyway).
+
 ## 0.8.0 - 2026-07-09
 
 ### Added

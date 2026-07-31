@@ -258,7 +258,9 @@ uv publish
 ### Markdown Extensions
 - `markdown-katex` - Math rendering
 - `mdx-wikilink-plus` - Wiki-style links
-- `mdx-linkify` - Auto-link URLs
+
+Auto-linking of bare URLs is built in (`foliate/autolink.py`); it replaced
+`mdx-linkify`/`bleach` (unmaintained, outdated TLD list).
 
 ### External (Quarto)
 - Quarto CLI - `.qmd` rendering; Python documents also need a Jupyter kernel
