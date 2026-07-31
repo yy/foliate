@@ -8,6 +8,7 @@
 
 ### Fixed
 - Lists directly following a paragraph (no blank line) now render as proper lists, matching CommonMark/Obsidian behavior (#18). Bullet lists and ordered lists starting at `1.` may interrupt a paragraph; other numbers (e.g. a line starting `2019.`) stay prose.
+- Bump the build schema so the first build after upgrading does a one-time full rebuild. Without it, cached pages kept pre-upgrade HTML and missed the floating TOC and autolink changes until their source was next edited.
 
 ## 0.10.0 - 2026-07-31
 

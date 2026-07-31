@@ -13,7 +13,8 @@ SOURCE_VISIBILITY_CACHE_KEY = "__source_visibility__"
 
 # Increment when generated output semantics change in a way that requires a
 # one-time full rebuild of otherwise cached pages.
-BUILD_SCHEMA_VERSION = 1
+# 2: floating TOC (page.toc) and scheme-based autolink changed page HTML.
+BUILD_SCHEMA_VERSION = 2
 SOURCE_VISIBILITY_CACHE_VERSION = 1
 GLOBAL_CACHE_KEYS = frozenset(
     {
