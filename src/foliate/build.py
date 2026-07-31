@@ -1118,6 +1118,9 @@ def _setup_build_environment(
 
     _prepare_artifact_dir(build_dir)
 
+    # Skip Jekyll processing when the output lands on GitHub Pages (#16).
+    (build_dir / ".nojekyll").touch()
+
     # Setup Jinja2 environment with template loader
     env = Environment(loader=get_template_loader(vault_path))
 
