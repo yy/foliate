@@ -228,7 +228,7 @@ def _preview_asset_dir(preview_md: Path) -> Path:
 
 
 def _preview_assets_missing(config: Config, preview_md: Path, qmd_file: Path) -> bool:
-    """Return whether a publisher-backed preview is missing its local assets."""
+    """Return whether publisher-backed preview assets are missing or stale."""
     from .published_assets import publisher_is_configured
 
     if not publisher_is_configured(config):
@@ -242,16 +242,17 @@ def _preview_assets_missing(config: Config, preview_md: Path, qmd_file: Path) ->
     if not preview_dir.is_dir():
         return True
 
-    source_files = {
-        path.relative_to(source_dir): path.stat().st_size
-        for path in source_dir.rglob("*")
-        if path.is_file()
-    }
-    preview_files = {
-        path.relative_to(preview_dir): path.stat().st_size
-        for path in preview_dir.rglob("*")
-        if path.is_file()
-    }
+    def file_signatures(root: Path) -> dict[Path, tuple[int, int]]:
+        signatures = {}
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            stat = path.stat()
+            signatures[path.relative_to(root)] = (stat.st_size, stat.st_mtime_ns)
+        return signatures
+
+    source_files = file_signatures(source_dir)
+    preview_files = file_signatures(preview_dir)
     return source_files != preview_files
 
 

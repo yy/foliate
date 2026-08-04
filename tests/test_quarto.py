@@ -1,5 +1,6 @@
 """Tests for quarto module."""
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock
@@ -421,6 +422,18 @@ class TestPreprocessQuarto:
         preprocess_quarto(config, single_file=qmd_file)
 
         assert preview_asset.read_bytes() == b"figure"
+        render_qmd.assert_called_once()
+
+        source_asset = (
+            foliate_dir / "cache" / "quarto" / "assets" / "Bike access" / "plot.png"
+        )
+        source_asset.write_bytes(b"update")
+        newer_mtime = preview_asset.stat().st_mtime_ns + 2_000_000_000
+        os.utime(source_asset, ns=(newer_mtime, newer_mtime))
+
+        preprocess_quarto(config, single_file=qmd_file)
+
+        assert preview_asset.read_bytes() == b"update"
         render_qmd.assert_called_once()
 
     def test_missing_cached_publisher_assets_force_rerender(
