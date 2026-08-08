@@ -48,7 +48,6 @@ body {
   background-color: var(--background-primary);
   color: var(--text-primary);
   line-height: 1.6;
-  overflow-x: hidden;
 }
 
 /* ============================================================================
@@ -750,17 +749,29 @@ article .katex {
 }
 
 @media (min-width: 1320px) {
+  /* Zero-height sticky box: sits at its flow position (top of .content),
+     then follows the scroll; the .toc inside hangs into the left gutter. */
   .page-toc {
     display: block;
-    position: fixed;
-    top: 6rem;
-    right: calc(50% + 420px);
-    width: 220px;
-    max-height: calc(100vh - 8rem);
-    overflow-y: auto;
+    position: sticky;
+    top: 2rem;
+    height: 0;
     font-size: 0.85rem;
     line-height: 1.4;
     color: var(--text-secondary);
+  }
+
+  .page-toc .toc {
+    width: 220px;
+    margin-left: -240px;
+    /* Align the first TOC entry with the first line of content: .content's
+       1rem section padding + first paragraph's 1.4rem margin, minus the
+       first li's 0.35rem margin, plus the leading difference between the
+       two font sizes. Relative offset avoids margin collapse. */
+    position: relative;
+    top: 2.2rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
   }
 
   .page-toc .toc > ul {
