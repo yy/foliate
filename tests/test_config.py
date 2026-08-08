@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 from foliate.config import Config
 
 
@@ -574,6 +576,30 @@ new_page_window = "soon"
         )
 
         with pytest.raises(TypeError, match=r"\[build\]\.new_page_window.*integer"):
+            Config.load(config_path)
+
+    @pytest.mark.parametrize(
+        ("section", "field_name"),
+        [
+            ("build", "incremental"),
+            ("build", "nl2br"),
+            ("build", "slugify_urls"),
+            ("advanced", "quarto_enabled"),
+            ("feed", "enabled"),
+            ("feed", "full_content"),
+        ],
+    )
+    def test_load_raises_on_invalid_boolean_type(self, tmp_path, section, field_name):
+        """Boolean settings reject truthy strings such as ``"false"``."""
+        config_dir = tmp_path / ".foliate"
+        config_dir.mkdir()
+        config_path = config_dir / "config.toml"
+        config_path.write_text(
+            f'[{section}]\n{field_name} = "false"\n',
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TypeError, match=rf"\[{section}\]\.{field_name}.*boolean"):
             Config.load(config_path)
 
     def test_load_raises_on_invalid_deploy_target_type(self, tmp_path):

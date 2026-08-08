@@ -218,6 +218,22 @@ def _require_int_value(
     return _validate
 
 
+def _require_bool_value(
+    *, section: str, field_name: str, config_path: Path
+) -> Callable[[object], object]:
+    """Return a transform that validates a config value is a boolean."""
+
+    def _validate(value: object) -> object:
+        if type(value) is not bool:
+            raise TypeError(
+                f"Config section [{section}].{field_name} in {config_path} "
+                f"must be a boolean, got {type(value).__name__}"
+            )
+        return value
+
+    return _validate
+
+
 def _default_nav_items(
     wiki_base_url: str = "/wiki/",
     home_page: str = "Home",
@@ -491,6 +507,21 @@ class Config:
                     field_name="new_page_window",
                     config_path=config_path,
                 ),
+                "incremental": _require_bool_value(
+                    section="build",
+                    field_name="incremental",
+                    config_path=config_path,
+                ),
+                "nl2br": _require_bool_value(
+                    section="build",
+                    field_name="nl2br",
+                    config_path=config_path,
+                ),
+                "slugify_urls": _require_bool_value(
+                    section="build",
+                    field_name="slugify_urls",
+                    config_path=config_path,
+                ),
             },
         )
         config.footer = _load_optional_dataclass_section(
@@ -502,7 +533,14 @@ class Config:
             AdvancedConfig,
             config.advanced,
             config_path,
-            transforms={"quarto_python": _expand_path_value},
+            transforms={
+                "quarto_enabled": _require_bool_value(
+                    section="advanced",
+                    field_name="quarto_enabled",
+                    config_path=config_path,
+                ),
+                "quarto_python": _expand_path_value,
+            },
         )
         config.deploy = _load_optional_dataclass_section(
             data,
@@ -532,6 +570,16 @@ class Config:
                 "window": _require_int_value(
                     section="feed",
                     field_name="window",
+                    config_path=config_path,
+                ),
+                "enabled": _require_bool_value(
+                    section="feed",
+                    field_name="enabled",
+                    config_path=config_path,
+                ),
+                "full_content": _require_bool_value(
+                    section="feed",
+                    field_name="full_content",
                     config_path=config_path,
                 ),
             },
