@@ -21,10 +21,33 @@
     {% endif %}
 </header>
 
-{% if floating_toc and page.toc %}
+{% if floating_toc and page.toc and base_url != "/" %}
 <nav class="page-toc" aria-label="Table of contents">
-    {{ page.toc|safe }}
+    <button class="page-toc-toggle" type="button" aria-expanded="true">hide</button>
+    <div class="page-toc-body">
+        {{ page.toc|safe }}
+    </div>
 </nav>
+<script>
+(function () {
+    var nav = document.querySelector(".page-toc");
+    var btn = nav.querySelector(".page-toc-toggle");
+    var KEY = "foliate-toc-hidden";
+    function apply(hidden) {
+        nav.classList.toggle("page-toc--hidden", hidden);
+        btn.setAttribute("aria-expanded", String(!hidden));
+        btn.textContent = hidden ? "toc" : "hide";
+    }
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    apply(stored === "1");
+    btn.addEventListener("click", function () {
+        var hidden = !nav.classList.contains("page-toc--hidden");
+        apply(hidden);
+        try { localStorage.setItem(KEY, hidden ? "1" : "0"); } catch (e) {}
+    });
+})();
+</script>
 {% endif %}
 
 <section class="content">

@@ -78,6 +78,18 @@ class TestFloatingTocBuild:
         ).read_text()
         assert 'class="page-toc"' not in html
 
+    def test_toc_absent_on_homepage_pages(self, tmp_path):
+        vault_path, config_path = _make_vault(tmp_path, "floating_toc = true")
+        homepage_dir = vault_path / "_homepage"
+        homepage_dir.mkdir()
+        (homepage_dir / "about.md").write_text(
+            "---\ntitle: About\npublic: true\n---\n## Alpha\n\ntext\n\n## Beta\n\ntext"
+        )
+        build.build(config=Config.load(config_path), force_rebuild=True)
+
+        html = (vault_path / ".foliate" / "build" / "about" / "index.html").read_text()
+        assert 'class="page-toc"' not in html
+
     def test_toc_absent_without_headings(self, tmp_path):
         vault_path, config_path = _make_vault(tmp_path, "floating_toc = true")
         (vault_path / "note.md").write_text(

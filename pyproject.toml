@@ -81,6 +81,8 @@ module = [
     "frontmatter",
     "jinja2",
     "markdown",
+    "markdown.extensions",
+    "markdown.postprocessors",
     "markdown.preprocessors",
     "markdown.treeprocessors",
     "watchdog.events",

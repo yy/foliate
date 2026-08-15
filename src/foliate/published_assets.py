@@ -65,8 +65,10 @@ def load_publisher_config(
         raise AssetPublicationError(f"{path} must contain a [publisher] table")
 
     command = table.get("command")
-    if not isinstance(command, list) or not command or not all(
-        isinstance(part, str) and part for part in command
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(part, str) and part for part in command)
     ):
         raise AssetPublicationError(
             f"[publisher].command in {path} must be a non-empty array of strings"
@@ -99,9 +101,8 @@ def load_publisher_config(
         )
     normalized_prefix = key_prefix.strip("/")
     prefix_parts = normalized_prefix.split("/")
-    if (
-        "\\" in normalized_prefix
-        or any(not part or part in {".", ".."} for part in prefix_parts)
+    if "\\" in normalized_prefix or any(
+        not part or part in {".", ".."} for part in prefix_parts
     ):
         raise AssetPublicationError(
             f"[publisher].key_prefix in {path} must be a safe URL path"
@@ -135,9 +136,7 @@ def get_generated_asset_root(config: Config) -> Path:
     return vault.resolve() / "assets" / "quarto"
 
 
-def generated_asset_key(
-    relative_path: Path, publisher: PublisherConfig
-) -> str:
+def generated_asset_key(relative_path: Path, publisher: PublisherConfig) -> str:
     """Return the stable object key overwritten by later figure versions."""
     relative = PurePosixPath(relative_path.as_posix())
     if relative.is_absolute() or any(
@@ -194,9 +193,7 @@ def _rewrite_asset_references(
     return changed
 
 
-def _format_publish_command(
-    publisher: PublisherConfig, staging_dir: Path
-) -> list[str]:
+def _format_publish_command(publisher: PublisherConfig, staging_dir: Path) -> list[str]:
     prefix_dir = staging_dir.joinpath(*PurePosixPath(publisher.key_prefix).parts)
     values = {
         "staging_dir": str(staging_dir.resolve()),
@@ -236,9 +233,7 @@ def prepare_published_build(
             robust_rmtree(path)
     shutil.copytree(build_dir, deploy_dir)
     staging_dir.mkdir(parents=True)
-    staging_dir.joinpath(*PurePosixPath(publisher.key_prefix).parts).mkdir(
-        parents=True
-    )
+    staging_dir.joinpath(*PurePosixPath(publisher.key_prefix).parts).mkdir(parents=True)
 
     asset_root = deploy_dir / "assets" / "quarto"
     deploy_text = _load_deploy_text(deploy_dir, asset_root)

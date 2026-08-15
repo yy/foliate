@@ -621,13 +621,9 @@ name = "Test Site"
         config_path = foliate_dir / "config.toml"
         config_path.write_text("[site]\nname = 'Test Site'\n", encoding="utf-8")
         public_file = vault_path / "public.md"
-        public_file.write_text(
-            "---\npublic: true\n---\nPublic", encoding="utf-8"
-        )
+        public_file.write_text("---\npublic: true\n---\nPublic", encoding="utf-8")
         private_file = vault_path / "private.md"
-        private_file.write_text(
-            "---\npublic: false\n---\nPrivate", encoding="utf-8"
-        )
+        private_file.write_text("---\npublic: false\n---\nPrivate", encoding="utf-8")
 
         config = Config.load(config_path)
         build.build(config=config, force_rebuild=True, incremental=True)
@@ -636,23 +632,17 @@ name = "Test Site"
             "foliate.build.parse_markdown_file",
             wraps=build.parse_markdown_file,
         ) as mock_parse:
-            result = build.build(
-                config=config, force_rebuild=False, incremental=True
-            )
+            result = build.build(config=config, force_rebuild=False, incremental=True)
 
         assert result == 1
         assert [call.args[0] for call in mock_parse.call_args_list] == [public_file]
 
-        private_file.write_text(
-            "---\npublic: true\n---\nNow public", encoding="utf-8"
-        )
+        private_file.write_text("---\npublic: true\n---\nNow public", encoding="utf-8")
         with patch(
             "foliate.build.parse_markdown_file",
             wraps=build.parse_markdown_file,
         ) as mock_parse:
-            result = build.build(
-                config=config, force_rebuild=False, incremental=True
-            )
+            result = build.build(config=config, force_rebuild=False, incremental=True)
 
         assert result == 2
         assert {call.args[0] for call in mock_parse.call_args_list} == {
@@ -670,9 +660,7 @@ name = "Test Site"
         config_path = foliate_dir / "config.toml"
         config_path.write_text("[site]\nname = 'Test Site'\n", encoding="utf-8")
         private_file = vault_path / "private.md"
-        private_file.write_text(
-            "---\npublic: false\n---\nPrivate", encoding="utf-8"
-        )
+        private_file.write_text("---\npublic: false\n---\nPrivate", encoding="utf-8")
 
         config = Config.load(config_path)
         build.build(config=config, force_rebuild=True, incremental=True)

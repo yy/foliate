@@ -758,6 +758,26 @@ article .katex {
     height: 0;
     font-size: 0.85rem;
     line-height: 1.4;
+    color: #adadad;
+  }
+
+  .page-toc-toggle {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: -240px;
+    width: 220px;
+    background: none;
+    border: none;
+    padding: 0 0 0.4rem 0;
+    cursor: pointer;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #c6c6c6;
+  }
+
+  .page-toc-toggle:hover {
     color: var(--text-secondary);
   }
 
@@ -772,6 +792,10 @@ article .katex {
     top: 2.2rem;
     max-height: calc(100vh - 4rem);
     overflow-y: auto;
+  }
+
+  .page-toc--hidden .page-toc-body {
+    display: none;
   }
 
   .page-toc .toc > ul {
@@ -790,7 +814,7 @@ article .katex {
   }
 
   .page-toc a {
-    color: var(--text-secondary);
+    color: #adadad;
     text-decoration: none;
   }
 

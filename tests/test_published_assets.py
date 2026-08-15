@@ -76,9 +76,7 @@ def test_configured_sites_keep_generated_assets_in_cache(tmp_path):
 def test_load_publisher_config_requires_staging_command(tmp_path):
     config = _config(tmp_path)
     (tmp_path / ".foliate" / "assets.toml").write_text(
-        "[publisher]\n"
-        'command = ["upload"]\n'
-        'public_base_url = "https://cdn.example"\n',
+        '[publisher]\ncommand = ["upload"]\npublic_base_url = "https://cdn.example"\n',
         encoding="utf-8",
     )
 
@@ -125,8 +123,7 @@ def test_generated_asset_url_is_stable_and_encoded():
 
     assert key == "quarto/My Page/plot one.png"
     assert public_asset_url(key, publisher) == (
-        "https://cdn.example/public/imgs/"
-        "quarto/My%20Page/plot%20one.png"
+        "https://cdn.example/public/imgs/quarto/My%20Page/plot%20one.png"
     )
 
 
@@ -148,9 +145,9 @@ def test_prepare_dry_run_rewrites_copy_and_stages_only_referenced_assets(
 
     deploy_html = result.path / html.relative_to(build_dir)
     deploy_content = deploy_html.read_text(encoding="utf-8")
-    assert deploy_content.count(
-        "https://cdn.example/public/imgs/quarto/My%20Page/"
-    ) == 2
+    assert (
+        deploy_content.count("https://cdn.example/public/imgs/quarto/My%20Page/") == 2
+    )
     assert "https://example.comhttps://" not in deploy_content
     assert not (result.path / "assets" / "quarto").exists()
 
@@ -196,9 +193,7 @@ def test_publish_command_can_target_only_the_managed_prefix(tmp_path, monkeypatc
     assert command[2] == "remote/quarto"
 
 
-def test_empty_public_asset_set_still_syncs_for_remote_deletion(
-    tmp_path, monkeypatch
-):
+def test_empty_public_asset_set_still_syncs_for_remote_deletion(tmp_path, monkeypatch):
     config = _config(tmp_path)
     build_dir = config.get_build_dir()
     build_dir.mkdir(parents=True)

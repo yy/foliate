@@ -395,6 +395,62 @@ class TestConfigureExtensions:
         assert "nl2br" not in exts
 
 
+class TestDollarMathProtection:
+    """Dollar-delimited TeX reaches client-side KaTeX unchanged."""
+
+    def test_preserves_display_math_with_subscripts_and_tag(self):
+        source = (
+            r"$$\mu_{i\leftarrow j}="
+            r"\prod_{\substack{k\in\mathcal{N}_j\\k\ne i}}"
+            r"\mu_{j\leftarrow k}.\tag{3}$$"
+        )
+
+        result = markdown_utils.render_markdown(source)
+
+        assert source in result
+        assert "<em" not in result
+
+    def test_preserves_inline_math_with_subscripts(self):
+        source = r"The message $\mu_{i\leftarrow j}$ excludes node $i$."
+
+        result = markdown_utils.render_markdown(source)
+
+        assert r"$\mu_{i\leftarrow j}$" in result
+        assert "$i$" in result
+        assert "<em" not in result
+
+    def test_escapes_html_metacharacters_in_math(self):
+        result = markdown_utils.render_markdown(r"$x<y \mathbin{\&} z$")
+
+        assert r"$x&lt;y \mathbin{\&amp;} z$" in result
+
+    def test_leaves_math_inside_code_fence_as_code(self):
+        source = "```text\n$$x_i=y_j$$\n```"
+
+        result = markdown_utils.render_markdown(source)
+
+        assert "<code>$$x_i=y_j$$" in result
+        assert "FOLIATEMATHPLACEHOLDER" not in result
+
+    def test_leaves_math_inside_code_span_as_code(self):
+        result = markdown_utils.render_markdown(r"`$x_i$`")
+
+        assert "<code>$x_i$</code>" in result
+        assert "FOLIATEMATHPLACEHOLDER" not in result
+
+    def test_leaves_escaped_dollars_unprotected(self):
+        result = markdown_utils.render_markdown(r"\$5 and \$10")
+
+        assert "FOLIATEMATHPLACEHOLDER" not in result
+
+    def test_inline_math_does_not_span_lines(self):
+        source = "$not closed\nnext line$"
+
+        result = markdown_utils.render_markdown(source)
+
+        assert "FOLIATEMATHPLACEHOLDER" not in result
+
+
 class TestMarkdownConverterCaching:
     """Tests for Markdown converter reuse."""
 

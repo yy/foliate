@@ -14,6 +14,7 @@ type ExtensionConfigMap = dict[str, dict[str, object]]
 MARKDOWN_EXTENSIONS = [
     "codehilite",
     "markdown_katex",
+    "foliate.dollar_math",
     "mdx_wikilink_plus",
     "foliate.autolink",
     "extra",  # tables, footnotes, etc.

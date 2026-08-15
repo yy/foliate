@@ -260,9 +260,7 @@ class TestPostprocessLinks:
             '<a href="/wiki/Private/" class="wikilink">Private</a>',
             encoding="utf-8",
         )
-        home_page = Page.from_markdown(
-            "Home", {"public": True}, "", render_html=False
-        )
+        home_page = Page.from_markdown("Home", {"public": True}, "", render_html=False)
 
         assert postprocess_links(config, [home_page]) is True
         assert 'class="wikilink-private"' in html_file.read_text(encoding="utf-8")
