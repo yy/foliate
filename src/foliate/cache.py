@@ -15,7 +15,8 @@ SOURCE_VISIBILITY_CACHE_KEY = "__source_visibility__"
 # one-time full rebuild of otherwise cached pages.
 # 2: floating TOC (page.toc) and scheme-based autolink changed page HTML.
 # 3: floating TOC alignment changed the default stylesheet.
-BUILD_SCHEMA_VERSION = 3
+# 4: floating TOC controls changed the default page template and stylesheet.
+BUILD_SCHEMA_VERSION = 4
 SOURCE_VISIBILITY_CACHE_VERSION = 1
 GLOBAL_CACHE_KEYS = frozenset(
     {
