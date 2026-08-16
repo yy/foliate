@@ -522,6 +522,11 @@ class Config:
                     field_name="slugify_urls",
                     config_path=config_path,
                 ),
+                "floating_toc": _require_bool_value(
+                    section="build",
+                    field_name="floating_toc",
+                    config_path=config_path,
+                ),
             },
         )
         config.footer = _load_optional_dataclass_section(
