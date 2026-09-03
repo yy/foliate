@@ -1,21 +1,32 @@
 """Tests for optional remote publication of generated assets."""
 
+import json
 from pathlib import Path
 from subprocess import CalledProcessError
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from foliate.config import Config
 from foliate.published_assets import (
+    _MANIFEST_FILENAME,
     AssetPublicationError,
     PublisherConfig,
+    _remote_manifest_matches,
     generated_asset_key,
     get_generated_asset_root,
     load_publisher_config,
     prepare_published_build,
     public_asset_url,
 )
+
+
+@pytest.fixture(autouse=True)
+def remote_manifest_is_missing(monkeypatch):
+    monkeypatch.setattr(
+        "foliate.published_assets._remote_manifest_matches",
+        lambda _publisher, _manifest: False,
+    )
 
 
 def _config(tmp_path: Path, *, publisher: bool = True) -> Config:
@@ -170,6 +181,57 @@ def test_prepare_published_build_runs_one_tree_upload(tmp_path, monkeypatch):
     command = upload.call_args.args[0]
     assert command[0] == "uploader"
     assert Path(command[1]).is_dir()
+
+
+def test_unchanged_remote_manifest_skips_upload(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    build_dir, _asset, _html = _build_with_assets(config)
+    upload = Mock()
+    matches = Mock(return_value=True)
+    monkeypatch.setattr("foliate.published_assets.subprocess.run", upload)
+    monkeypatch.setattr("foliate.published_assets._remote_manifest_matches", matches)
+
+    result = prepare_published_build(config, build_dir)
+
+    assert result.asset_count == 1
+    assert result.assets_changed is False
+    upload.assert_not_called()
+    manifest_path = (
+        config.get_cache_dir() / "publisher" / "staging" / "quarto" / _MANIFEST_FILENAME
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["version"] == 1
+    assert manifest["assets"] == [
+        {
+            "path": "My Page/plot one.png",
+            "sha256": (
+                "0f3850ab36e9d43a8615d62d179e484003562531b41a9f517c5f4e7313b00222"
+            ),
+            "size": 4,
+        }
+    ]
+    matches.assert_called_once_with(
+        load_publisher_config(config), manifest_path.read_bytes()
+    )
+
+
+def test_remote_manifest_is_fetched_from_public_asset_url(monkeypatch):
+    publisher = PublisherConfig(
+        command=("upload", "{staging_dir}"),
+        public_base_url="https://cdn.example/public/imgs",
+    )
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = b"manifest\n"
+    open_remote = Mock(return_value=response)
+    monkeypatch.setattr("foliate.published_assets.urlopen", open_remote)
+
+    assert _remote_manifest_matches(publisher, b"manifest\n") is True
+
+    request = open_remote.call_args.args[0]
+    assert request.full_url == (
+        "https://cdn.example/public/imgs/quarto/.foliate-manifest.json"
+    )
+    assert request.get_header("Cache-control") == "no-cache"
 
 
 def test_publish_command_can_target_only_the_managed_prefix(tmp_path, monkeypatch):

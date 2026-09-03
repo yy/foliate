@@ -7,12 +7,15 @@ figures referenced by the built site before syncing the HTML.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import subprocess
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, urlsplit
+from urllib.request import Request, urlopen
 
 from .config import Config
 
@@ -37,6 +40,12 @@ class PublishedBuild:
     path: Path
     asset_count: int
     dry_run: bool
+    assets_changed: bool = False
+
+
+_MANIFEST_FILENAME = ".foliate-manifest.json"
+_MANIFEST_VERSION = 1
+_MANIFEST_MAX_BYTES = 1_000_000
 
 
 def _publisher_config_path(config: Config) -> Path:
@@ -208,6 +217,69 @@ def _format_publish_command(publisher: PublisherConfig, staging_dir: Path) -> li
         ) from error
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _publisher_fingerprint(publisher: PublisherConfig) -> str:
+    encoded = json.dumps(
+        {
+            "command": publisher.command,
+            "key_prefix": publisher.key_prefix,
+            "public_base_url": publisher.public_base_url,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _write_asset_manifest(prefix_dir: Path, publisher: PublisherConfig) -> bytes:
+    assets = []
+    for path in sorted(
+        candidate for candidate in prefix_dir.rglob("*") if candidate.is_file()
+    ):
+        relative = path.relative_to(prefix_dir).as_posix()
+        if relative == _MANIFEST_FILENAME:
+            continue
+        assets.append(
+            {
+                "path": relative,
+                "sha256": _file_sha256(path),
+                "size": path.stat().st_size,
+            }
+        )
+
+    manifest = {
+        "assets": assets,
+        "publisher": _publisher_fingerprint(publisher),
+        "version": _MANIFEST_VERSION,
+    }
+    encoded = (
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    (prefix_dir / _MANIFEST_FILENAME).write_bytes(encoded)
+    return encoded
+
+
+def _remote_manifest_matches(publisher: PublisherConfig, local_manifest: bytes) -> bool:
+    key = f"{publisher.key_prefix}/{_MANIFEST_FILENAME}"
+    request = Request(
+        public_asset_url(key, publisher),
+        headers={"Cache-Control": "no-cache", "Pragma": "no-cache"},
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            remote_manifest = response.read(_MANIFEST_MAX_BYTES + 1)
+    except (OSError, ValueError):
+        return False
+    return remote_manifest == local_manifest
+
+
 def prepare_published_build(
     config: Config,
     build_dir: Path,
@@ -233,7 +305,8 @@ def prepare_published_build(
             robust_rmtree(path)
     shutil.copytree(build_dir, deploy_dir)
     staging_dir.mkdir(parents=True)
-    staging_dir.joinpath(*PurePosixPath(publisher.key_prefix).parts).mkdir(parents=True)
+    prefix_dir = staging_dir.joinpath(*PurePosixPath(publisher.key_prefix).parts)
+    prefix_dir.mkdir(parents=True)
 
     asset_root = deploy_dir / "assets" / "quarto"
     deploy_text = _load_deploy_text(deploy_dir, asset_root)
@@ -262,7 +335,10 @@ def prepare_published_build(
     for path, content in deploy_text.items():
         path.write_text(content, encoding="utf-8")
 
-    if not dry_run:
+    manifest = _write_asset_manifest(prefix_dir, publisher)
+    assets_changed = not _remote_manifest_matches(publisher, manifest)
+
+    if not dry_run and assets_changed:
         command = _format_publish_command(publisher, staging_dir)
         try:
             subprocess.run(command, check=True)
@@ -271,4 +347,4 @@ def prepare_published_build(
                 f"Generated-asset upload failed: {error}"
             ) from error
 
-    return PublishedBuild(deploy_dir, asset_count, dry_run)
+    return PublishedBuild(deploy_dir, asset_count, dry_run, assets_changed)

@@ -244,6 +244,12 @@ figures without touching unrelated bucket objects. Use revalidating or short
 cache headers when URLs are overwritten. `foliate deploy --dry-run` prepares
 and reports the production rewrite without invoking the uploader.
 
+Foliate publishes a content manifest at
+`{public_base_url}/{key_prefix}/.foliate-manifest.json`. Before uploading, it
+fetches that public manifest and skips the publisher command when the generated
+asset tree is unchanged. A missing or unreadable manifest triggers a normal
+upload.
+
 The v0.8 publisher configuration and `foliate publish-assets` command are not compatible with this deployment-based workflow. Existing publisher users should follow the [v0.9 migration guide](docs/releases/0.9.0.md#migrating-the-generated-asset-publisher) before upgrading.
 
 See the [v0.11.0 release notes](docs/releases/0.11.0.md) for the floating TOC and rendering fixes in this release.

@@ -452,7 +452,9 @@ def deploy_github_pages(
         error(str(exc))
         return False
     build_dir = published_build.path
-    if published_build.asset_count:
+    if published_build.asset_count and not published_build.assets_changed:
+        info("Generated assets unchanged; skipped publisher")
+    elif published_build.asset_count:
         action = "Would publish" if dry_run else "Published"
         info(f"{action} {published_build.asset_count} generated asset(s)")
 
