@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.0 - 2026-09-13
+
+### Added
+
+- `build.foldable_headings`: optional triangle buttons beside h2 headings to fold their sections, including subsections. Off by default; sections start expanded. Supports keyboard controls, links into folded sections, and printing all content.
+
+### Changed
+
+- Generated-asset publishing compares a content manifest with the remote copy and skips uploads when the asset tree and publisher configuration are unchanged.
+
+### Fixed
+
+- Validate `build.floating_toc` as a boolean instead of accepting truthy strings.
+
 ## 0.11.0 - 2026-07-31
 
 ### Added
