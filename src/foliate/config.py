@@ -336,6 +336,7 @@ class BuildConfig:
     recent_pages: int = 20  # Number of recent pages shown on the home page
     new_page_window: int = 30  # Days within which a page is considered "new"
     floating_toc: bool = False  # Floating table of contents on wide viewports
+    foldable_headings: bool = False  # Collapsible h2 sections, initially expanded
 
 
 @dataclass
@@ -525,6 +526,11 @@ class Config:
                 "floating_toc": _require_bool_value(
                     section="build",
                     field_name="floating_toc",
+                    config_path=config_path,
+                ),
+                "foldable_headings": _require_bool_value(
+                    section="build",
+                    field_name="foldable_headings",
                     config_path=config_path,
                 ),
             },
@@ -726,6 +732,7 @@ class Config:
             },
             "home_page": self.build.home_page,
             "floating_toc": self.build.floating_toc,
+            "foldable_headings": self.build.foldable_headings,
             "feed_enabled": self.feed.enabled,
             "feed_title": self.feed.title or self.site.name,
             "search_index_url": self.base_urls["wiki"] + "search.json",

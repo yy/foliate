@@ -1,0 +1,73 @@
+/* Keep heading text aligned with the page; put the control in the gutter. */
+.foldable-heading {
+  position: relative;
+}
+
+.heading-toggle {
+  position: absolute;
+  inset-inline-start: -1.35em;
+  top: 0;
+  width: 1.25em;
+  height: 1.5em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.heading-toggle:hover,
+.heading-toggle:focus-visible {
+  opacity: 1;
+}
+
+.heading-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.heading-toggle span {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-top: 0.23em solid transparent;
+  border-bottom: 0.23em solid transparent;
+  border-left: 0.35em solid currentColor;
+  transform: rotate(90deg);
+}
+
+.heading-toggle[aria-expanded="false"] span {
+  transform: none;
+}
+
+/* Avoid adding a layout box or changing paragraph/heading margin collapse. */
+.foldable-section {
+  display: contents;
+}
+
+.foldable-section[hidden] {
+  display: none !important;
+}
+
+/* Narrow pages have no spare gutter for an outside control. */
+@media (max-width: 600px) {
+  .heading-toggle {
+    position: static;
+    margin-inline-end: 0.15em;
+    vertical-align: baseline;
+  }
+}
+
+@media print {
+  .heading-toggle {
+    display: none !important;
+  }
+
+  .foldable-section[hidden] {
+    display: contents !important;
+  }
+}

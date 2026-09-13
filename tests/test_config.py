@@ -585,6 +585,7 @@ new_page_window = "soon"
             ("build", "nl2br"),
             ("build", "slugify_urls"),
             ("build", "floating_toc"),
+            ("build", "foldable_headings"),
             ("advanced", "quarto_enabled"),
             ("feed", "enabled"),
             ("feed", "full_content"),

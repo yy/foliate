@@ -59,6 +59,9 @@ slugify_urls = true
 # Rendered from the page's headings; hidden on narrow screens
 floating_toc = false
 
+# Add triangle buttons to fold h2 sections; sections start expanded
+foldable_headings = false
+
 
 [visibility]
 # Foliate uses a two-tiered visibility system:

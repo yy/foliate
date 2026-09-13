@@ -98,6 +98,7 @@ url = "https://example.com"
 [build]
 ignored_folders = ["_private", "drafts"]
 wiki_prefix = "wiki"  # URL prefix for wiki content (set to "" for root)
+foldable_headings = false  # Set true to add folding buttons beside h2 headings
 
 [nav]
 items = [
