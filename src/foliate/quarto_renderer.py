@@ -213,7 +213,7 @@ def _strip_html_wrappers(
     # numbered paragraph instead of a <figure>/<figcaption> wrapper. Preserve
     # the caption distinction using Foliate's existing italic-caption markup.
     content = re.sub(
-        r"(?m)(!\[[^\]\n]*\]\([^\n]+\)\n\n)"
+        r"(?m)((?:!\[[^\]\n]*\]\([^\n]+\)|<img\b[^>\n]*>)\n\n)"
         r"(Figure(?:\u00a0| )\d+:[^\n]+)$",
         r"\1*\2*",
         content,

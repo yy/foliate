@@ -133,6 +133,21 @@ def test_strip_html_wrappers_marks_gfm_numbered_caption(tmp_path):
     )
 
 
+def test_strip_html_wrappers_marks_html_image_caption(tmp_path):
+    md_file = tmp_path / "page.md"
+    image = '<img src="page_files/figure-commonmark/plot.png" data-fig-alt="Cars" />'
+    md_file.write_text(
+        f"{image}\n\nFigure\u00a01: Vehicle space.\n\nOrdinary paragraph.\n",
+        encoding="utf-8",
+    )
+
+    _strip_html_wrappers(md_file)
+
+    assert md_file.read_text(encoding="utf-8") == (
+        f"{image}\n\n*Figure\u00a01: Vehicle space.*\n\nOrdinary paragraph.\n"
+    )
+
+
 def test_fix_figure_paths_encodes_page_names(tmp_path):
     md_file = tmp_path / "nested" / "Page With Spaces.md"
     md_file.parent.mkdir()
