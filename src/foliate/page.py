@@ -236,7 +236,7 @@ class Page:
         file_metadata = _resolve_file_metadata(file_path)
         page_dates = _resolve_page_dates(meta, file_metadata.file_mtime)
         html, toc = (
-            render_markdown_with_toc(markdown_content, base_url)
+            render_markdown_with_toc(markdown_content, base_url, source=page_path)
             if render_html
             else ("", "")
         )

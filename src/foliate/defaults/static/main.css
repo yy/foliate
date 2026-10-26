@@ -213,6 +213,24 @@ figcaption {
   text-align: center;
 }
 
+/* ```mermaid diagrams, rendered to inline SVG by Pele at build time.
+   Colors are --pele-* variables; see https://pele.run/theming */
+.diagram {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.pele {
+  --pele-font: var(--font-family-sans);
+  --pele-font-mono: var(--font-family-mono);
+  --pele-bg: var(--background-primary);
+  --pele-fg: var(--text-primary);
+  --pele-muted: var(--text-secondary);
+  --pele-line: var(--text-secondary);
+  --pele-surface: var(--background-code);
+  --pele-border: var(--border-medium);
+}
+
 /* ============================================================================
    CODE BLOCKS
    ============================================================================ */

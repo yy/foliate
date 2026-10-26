@@ -12,6 +12,7 @@ type ExtensionConfigMap = dict[str, dict[str, object]]
 
 # Markdown extensions configuration
 MARKDOWN_EXTENSIONS = [
+    "foliate.mermaid",
     "codehilite",
     "markdown_katex",
     "foliate.dollar_math",
@@ -305,7 +306,9 @@ def _strip_backticks_in_wikilink_targets(content: str) -> str:
     return _WIKILINK_BACKTICK_RE.sub(_replace, content)
 
 
-def render_markdown_with_toc(content: str, base_url: str = "/wiki/") -> tuple[str, str]:
+def render_markdown_with_toc(
+    content: str, base_url: str = "/wiki/", source: str | None = None
+) -> tuple[str, str]:
     """Render markdown to HTML and return (html, toc_html).
 
     toc_html is the table-of-contents fragment from the ``toc`` extension,
@@ -314,9 +317,11 @@ def render_markdown_with_toc(content: str, base_url: str = "/wiki/") -> tuple[st
     Args:
         content: Markdown content
         base_url: Base URL for wikilinks
+        source: Page name for extension warnings (e.g., diagram errors)
     """
     md = get_markdown_converter(base_url)
     md.reset()
+    md.foliate_source = source
     content = _strip_backticks_in_wikilink_targets(content)
     html_content = md.convert(content)
     toc_html = getattr(md, "toc", "") if getattr(md, "toc_tokens", None) else ""

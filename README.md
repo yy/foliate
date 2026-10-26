@@ -28,6 +28,7 @@ uvx foliate deploy  # Deploy to GitHub Pages
 - **Watch mode** - Auto-rebuild on file changes
 - **Works with any markdown** - Obsidian, Logseq, or plain markdown files
 - **Obsidian syntax** - Supports `![alt|width](url)` image sizing
+- **Mermaid diagrams** - ```` ```mermaid ```` blocks become static SVG at build time (needs `node`)
 - **Quarto support** - Preprocess `.qmd` files (optional)
 - **Deploy command** - Built-in GitHub Pages deployment
 
@@ -188,6 +189,13 @@ See [docs/customization.md](docs/customization.md) for the full guide, including
   - [Custom footer with social links](docs/examples/custom-footer.md)
   - [Adding analytics](docs/examples/analytics.md)
   - [Adding a sidebar](docs/examples/sidebar.md)
+
+## Diagrams
+
+Fenced ```` ```mermaid ```` blocks render to inline SVG at build time with [Pele](https://github.com/obsidianmd/pele), the Mermaid renderer Obsidian uses since 1.15, so a page looks alike in Obsidian and on the site.
+Foliate ships a pinned copy of Pele; the build only needs `node` (20 or later) on `PATH`, and the site needs no JavaScript to show diagrams.
+Colors and fonts are `--pele-*` CSS variables ([Pele theming](https://pele.run/theming)), which the default stylesheet maps to the theme's variables; a custom `main.css` can copy that `.pele` block.
+Without `node`, or when a diagram fails to parse, the build warns and shows the block as code.
 
 ## Quarto Support
 

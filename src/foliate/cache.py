@@ -16,7 +16,8 @@ SOURCE_VISIBILITY_CACHE_KEY = "__source_visibility__"
 # 2: floating TOC (page.toc) and scheme-based autolink changed page HTML.
 # 3: floating TOC alignment changed the default stylesheet.
 # 4: floating TOC controls changed the default page template and stylesheet.
-BUILD_SCHEMA_VERSION = 4
+# 5: ```mermaid fences render to inline SVG (Pele); stylesheet themes them.
+BUILD_SCHEMA_VERSION = 5
 SOURCE_VISIBILITY_CACHE_VERSION = 1
 GLOBAL_CACHE_KEYS = frozenset(
     {

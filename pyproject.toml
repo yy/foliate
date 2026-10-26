@@ -82,6 +82,7 @@ module = [
     "jinja2",
     "markdown",
     "markdown.extensions",
+    "markdown.extensions.fenced_code",
     "markdown.postprocessors",
     "markdown.preprocessors",
     "markdown.treeprocessors",
