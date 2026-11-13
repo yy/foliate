@@ -13,6 +13,7 @@ type ExtensionConfigMap = dict[str, dict[str, object]]
 # Markdown extensions configuration
 MARKDOWN_EXTENSIONS = [
     "foliate.mermaid",
+    "foliate.callouts",
     "codehilite",
     "markdown_katex",
     "foliate.dollar_math",
@@ -70,6 +71,8 @@ _DESCRIPTION_PATTERNS = [
     (re.compile(r"\*([^*]+)\*"), r"\1"),
     (re.compile(r"__([^_]+)__"), r"\1"),
     (re.compile(r"_([^_]+)_"), r"\1"),
+    # Remove callout markers ("> [!note]- ") but keep the title
+    (re.compile(r"^>[ \t]*\[![^\]\s]+\][+-]?[ \t]*", re.MULTILINE), ""),
     # Remove blockquotes
     (re.compile(r"^>\s*", re.MULTILINE), ""),
     # Remove horizontal rules
