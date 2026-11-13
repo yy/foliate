@@ -130,5 +130,7 @@ def test_build_links_callout_stylesheet(tmp_path, monkeypatch):
     output = foliate_dir / "build"
     html = (output / "wiki" / "note" / "index.html").read_text(encoding="utf-8")
     assert 'href="/static/callouts.css"' in html
+    # Load before main.css so a site stylesheet can override callout colors.
+    assert html.index("/static/callouts.css") < html.index("/static/main.css")
     assert '<details class="callout callout-note">' in html
     assert (output / "static" / "callouts.css").is_file()

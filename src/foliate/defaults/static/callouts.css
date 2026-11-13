@@ -1,7 +1,8 @@
 /* Obsidian callouts: `> [!type] Title`, folded with `-` (closed) or `+` (open).
    Accents are RGB triples drawn as a border and a translucent tint, so the box
    follows the page's own text and background colors in light or dark themes.
-   Override one type with `.callout-name { --callout-color: R G B; }`. */
+   Override one type in main.css (loaded after this file) with
+   `.callout-name { --callout-color: R G B; }`. */
 
 .callout {
   --callout-color: 8 109 221;

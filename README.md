@@ -216,7 +216,7 @@ Foldable callouts become `<details>` elements, so they fold without JavaScript.
 The body is ordinary Markdown, including lists, wikilinks, math, and nested callouts.
 The type is case-insensitive and sets the class `callout-<type>`; a missing title falls back to the capitalized type.
 Common types such as `tip`, `warning`, `danger`, and `example` get their own accent color, and other types use the `note` color.
-Styles live in `static/callouts.css`, so a custom `main.css` keeps them; a custom `layout.html` needs `<link rel="stylesheet" href="/static/callouts.css">` in `<head>`.
+Styles live in `static/callouts.css`, so a custom `main.css` keeps them; a custom `layout.html` needs `<link rel="stylesheet" href="/static/callouts.css">` in `<head>`, before `main.css` so the site stylesheet can override it.
 
 ## Quarto Support
 
