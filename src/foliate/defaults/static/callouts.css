@@ -1,0 +1,57 @@
+/* Obsidian callouts: `> [!type] Title`, folded with `-` (closed) or `+` (open).
+   Accents are RGB triples drawn as a border and a translucent tint, so the box
+   follows the page's own text and background colors in light or dark themes.
+   Override one type in main.css (loaded after this file) with
+   `.callout-name { --callout-color: R G B; }`. */
+
+.callout {
+  --callout-color: 8 109 221;
+  margin: 1.4rem 0;
+  padding: 0.6rem 1rem;
+  border-left: 3px solid rgb(var(--callout-color));
+  border-radius: 4px;
+  background: rgb(var(--callout-color) / 0.08);
+}
+
+.callout-abstract, .callout-summary, .callout-tldr,
+.callout-tip, .callout-hint, .callout-important { --callout-color: 0 168 165; }
+.callout-success, .callout-check, .callout-done { --callout-color: 8 165 70; }
+.callout-question, .callout-help, .callout-faq,
+.callout-warning, .callout-caution, .callout-attention { --callout-color: 236 117 0; }
+.callout-failure, .callout-fail, .callout-missing,
+.callout-danger, .callout-error, .callout-bug { --callout-color: 233 49 71; }
+.callout-example { --callout-color: 120 82 238; }
+.callout-quote, .callout-cite { --callout-color: 158 158 158; }
+
+.callout-title {
+  font-weight: 600;
+}
+
+summary.callout-title {
+  cursor: pointer;
+}
+
+.callout-content {
+  margin-top: 0.5rem;
+}
+
+/* A wide equation scrolls on its own; the rest of the box stays put. */
+.callout .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.3em;
+}
+
+.callout-content > :first-child {
+  margin-top: 0;
+}
+
+.callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 600px) {
+  .callout {
+    padding: 0.5rem 0.75rem;
+  }
+}

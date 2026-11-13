@@ -5,6 +5,12 @@
 ### Added
 
 - ```` ```mermaid ```` code blocks render to inline, themeable SVG at build time with a vendored copy of [Pele](https://github.com/obsidianmd/pele) 1.10.0 (MIT), the renderer Obsidian uses since 1.15. Needs `node` on `PATH`; without it, or on a syntax error, the block stays a code block and the build warns. The default stylesheet maps Pele's `--pele-*` variables to the theme's colors and fonts. `make update-pele` refreshes the bundle.
+- Obsidian callouts: `> [!type] Title` renders as a box, and `> [!type]- Title` or `> [!type]+ Title` as a foldable `<details>` that starts closed or open. The body is full Markdown, including math, lists, wikilinks, and nested callouts. Styles ship in `static/callouts.css`; sites with a custom `layout.html` need to link it.
+
+### Fixed
+
+- Inside blockquotes, a list right after a paragraph renders as a list, and `$$` display math across `>` lines no longer passes the `>` markers to KaTeX.
+- Bump the build schema so cached pages re-render with callouts and these blockquote fixes.
 
 ## 0.12.0 - 2026-09-13
 

@@ -27,7 +27,7 @@ uvx foliate deploy  # Deploy to GitHub Pages
 - **Incremental builds** - Only rebuilds changed files (auto-rebuilds on config/template changes)
 - **Watch mode** - Auto-rebuild on file changes
 - **Works with any markdown** - Obsidian, Logseq, or plain markdown files
-- **Obsidian syntax** - Supports `![alt|width](url)` image sizing
+- **Obsidian syntax** - Supports `![alt|width](url)` image sizing and callouts, including foldable ones
 - **Mermaid diagrams** - ```` ```mermaid ```` blocks become static SVG at build time (needs `node`)
 - **Quarto support** - Preprocess `.qmd` files (optional)
 - **Deploy command** - Built-in GitHub Pages deployment
@@ -196,6 +196,27 @@ Fenced ```` ```mermaid ```` blocks render to inline SVG at build time with [Pele
 Foliate ships a pinned copy of Pele; the build only needs `node` (20 or later) on `PATH`, and the site needs no JavaScript to show diagrams.
 Colors and fonts are `--pele-*` CSS variables ([Pele theming](https://pele.run/theming)), which the default stylesheet maps to the theme's variables; a custom `main.css` can copy that `.pele` block.
 Without `node`, or when a diagram fails to parse, the build warns and shows the block as code.
+
+## Callouts
+
+Obsidian [callouts](https://obsidian.md/help/callouts) render as boxes:
+
+```markdown
+> [!note]- Derivation
+> Expand the log-likelihood:
+>
+> $$
+> \log L = \sum_{i<j} A_{ij} \log p_{g_i g_j}
+> $$
+```
+
+A `-` after the type makes the callout foldable and starts it closed; `+` starts it open.
+Without either, the callout is a fixed box.
+Foldable callouts become `<details>` elements, so they fold without JavaScript.
+The body is ordinary Markdown, including lists, wikilinks, math, and nested callouts.
+The type is case-insensitive and sets the class `callout-<type>`; a missing title falls back to the capitalized type.
+Common types such as `tip`, `warning`, `danger`, and `example` get their own accent color, and other types use the `note` color.
+Styles live in `static/callouts.css`, so a custom `main.css` keeps them; a custom `layout.html` needs `<link rel="stylesheet" href="/static/callouts.css">` in `<head>`, before `main.css` so the site stylesheet can override it.
 
 ## Quarto Support
 
