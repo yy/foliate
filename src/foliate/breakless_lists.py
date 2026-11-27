@@ -15,6 +15,9 @@ Follows CommonMark's paragraph-interruption rule: bullet items (``-``, ``*``,
 ordered numbers may not (they are more likely prose, e.g. "2019. was a good
 year"). Lines inside an existing list (previous line is a list item or an
 indented continuation) are left alone so tight lists stay tight.
+
+Inside a blockquote or callout (``> text`` then ``> - item``) the separator is
+a bare ``>`` line, which keeps the quote in one piece.
 """
 
 import re
@@ -29,23 +32,35 @@ _INTERRUPTING_ITEM = re.compile(r"^[ ]{0,3}(?:[-*+]|1\.)[ ]")
 # previous line is already part of a list.
 _ANY_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+\.)[ ]")
 
+# Blockquote markers at the start of a line (``>``, ``> >``).
+_QUOTE_PREFIX = re.compile(r"^(?:[ ]{0,3}>[ ]?)*")
+
+
+def _split_quote(line: str) -> tuple[str, str]:
+    """Split a line into its blockquote markers and the rest."""
+    match = _QUOTE_PREFIX.match(line)
+    prefix = match.group() if match else ""
+    return prefix.replace(" ", ""), line[len(prefix) :]
+
 
 class BreaklessListPreprocessor(Preprocessor):
     """Insert a blank line between a paragraph line and a following list."""
 
     def run(self, lines: list[str]) -> list[str]:
         new_lines: list[str] = []
-        prev = ""
-        for line in lines:
+        prev_quote, prev = "", ""
+        for raw_line in lines:
+            quote, line = _split_quote(raw_line)
             if (
-                _INTERRUPTING_ITEM.match(line)
+                quote == prev_quote
+                and _INTERRUPTING_ITEM.match(line)
                 and prev.strip()
                 and not prev.startswith((" ", "\t"))
                 and not _ANY_ITEM.match(prev)
             ):
-                new_lines.append("")
-            new_lines.append(line)
-            prev = line
+                new_lines.append(quote)
+            new_lines.append(raw_line)
+            prev_quote, prev = quote, line
         return new_lines
 
 

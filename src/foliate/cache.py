@@ -17,7 +17,8 @@ SOURCE_VISIBILITY_CACHE_KEY = "__source_visibility__"
 # 3: floating TOC alignment changed the default stylesheet.
 # 4: floating TOC controls changed the default page template and stylesheet.
 # 5: ```mermaid fences render to inline SVG (Pele); stylesheet themes them.
-BUILD_SCHEMA_VERSION = 5
+# 6: Obsidian callouts; lists and $$ math inside blockquotes render correctly.
+BUILD_SCHEMA_VERSION = 6
 SOURCE_VISIBILITY_CACHE_VERSION = 1
 GLOBAL_CACHE_KEYS = frozenset(
     {

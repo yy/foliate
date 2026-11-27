@@ -81,6 +81,7 @@ module = [
     "frontmatter",
     "jinja2",
     "markdown",
+    "markdown.blockprocessors",
     "markdown.extensions",
     "markdown.extensions.fenced_code",
     "markdown.postprocessors",

@@ -443,6 +443,21 @@ class TestDollarMathProtection:
 
         assert "FOLIATEMATHPLACEHOLDER" not in result
 
+    def test_strips_quote_markers_inside_quoted_display_math(self):
+        result = markdown_utils.render_markdown("> $$\n> a > b\n> $$")
+
+        assert "<blockquote>\n<p>$$\na &gt; b\n$$</p>\n</blockquote>" in result
+
+    def test_strips_nested_quote_markers_to_opening_depth(self):
+        result = markdown_utils.render_markdown("> > $$\n> > x\n> > $$")
+
+        assert "<p>$$\nx\n$$</p>" in result
+
+    def test_leaves_unquoted_display_math_lines_alone(self):
+        result = markdown_utils.render_markdown("$$\n> x\n$$")
+
+        assert "$$\n&gt; x\n$$" in result
+
     def test_inline_math_does_not_span_lines(self):
         source = "$not closed\nnext line$"
 

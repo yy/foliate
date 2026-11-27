@@ -43,3 +43,14 @@ class TestBreaklessLists:
         """Nested list items don't get a spurious blank line."""
         html = render_markdown("- a\n    - a1\n- b")
         assert html.count("<ul>") == 2
+
+    def test_list_after_paragraph_inside_blockquote(self):
+        """The same rule applies inside a blockquote, which stays one quote."""
+        html = render_markdown("> Steps:\n> - a\n> - b")
+        assert html.count("<blockquote>") == 1
+        assert "<blockquote>\n<p>Steps:</p>\n<ul>" in html
+        assert html.count("<li>") == 2
+
+    def test_list_after_paragraph_inside_nested_blockquote(self):
+        html = render_markdown("> > Steps:\n> > - a")
+        assert "<p>Steps:</p>\n<ul>\n<li>a</li>" in html

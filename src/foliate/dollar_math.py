@@ -2,10 +2,37 @@
 
 import hashlib
 import html
+import re
 
 from markdown.extensions import Extension
 from markdown.postprocessors import Postprocessor
 from markdown.preprocessors import Preprocessor
+
+# Blockquote markers (``>``, ``> >``) at the start of a line.
+_QUOTE_PREFIX_RE = re.compile(r"(?:[ ]{0,3}>[ ]?)+")
+_QUOTE_MARKER_RE = re.compile(r"[ ]{0,3}>[ ]?")
+
+
+def _unquote_display_math(content: str, start: int, source: str) -> str:
+    """Drop blockquote markers from continuation lines of quoted display math.
+
+    ``> $$`` / ``> a = b`` / ``> $$`` is protected as one span before the
+    blockquote parser strips ``>``, so strip it here, to the opening line's
+    quote depth, or KaTeX would see the markers as TeX.
+    """
+    line_start = content.rfind("\n", 0, start) + 1
+    prefix = _QUOTE_PREFIX_RE.match(content, line_start, start)
+    if prefix is None or "\n" not in source:
+        return source
+    depth = prefix.group().count(">")
+    lines = source.split("\n")
+    for index in range(1, len(lines)):
+        for _ in range(depth):
+            marker = _QUOTE_MARKER_RE.match(lines[index])
+            if marker is None:
+                break
+            lines[index] = lines[index][marker.end() :]
+    return "\n".join(lines)
 
 
 def _is_escaped(text: str, position: int) -> bool:
@@ -75,7 +102,9 @@ def protect_dollar_math(content: str) -> tuple[str, dict[str, str]]:
             math_end = _find_display_end(content, position + 2)
             if math_end is not None:
                 math_end += 2
-                source = content[position:math_end]
+                source = _unquote_display_math(
+                    content, position, content[position:math_end]
+                )
                 marker = _placeholder(source)
                 protected[marker] = source
                 output.append(marker)
