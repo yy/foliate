@@ -84,6 +84,7 @@ module = [
     "markdown.blockprocessors",
     "markdown.extensions",
     "markdown.extensions.fenced_code",
+    "markdown.inlinepatterns",
     "markdown.postprocessors",
     "markdown.preprocessors",
     "markdown.treeprocessors",

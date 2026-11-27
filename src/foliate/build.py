@@ -23,6 +23,7 @@ from .cache import (
     needs_rebuild,
     save_build_cache,
 )
+from .comments import strip_comments
 from .config import Config
 from .markdown_utils import (
     parse_markdown_file,
@@ -615,6 +616,11 @@ def iter_public_md_files(
                     on_skipped(source_file, page_path)
                 continue
 
+        markdown_content, unclosed_comment = strip_comments(markdown_content)
+        if unclosed_comment:
+            from .logging import warning
+
+            warning(f"{page_path}: unclosed %% comment hides the rest of the page")
         yield source_file, page_path, content_base_url, meta, markdown_content
 
 
