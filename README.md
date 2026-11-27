@@ -27,7 +27,7 @@ uvx foliate deploy  # Deploy to GitHub Pages
 - **Incremental builds** - Only rebuilds changed files (auto-rebuilds on config/template changes)
 - **Watch mode** - Auto-rebuild on file changes
 - **Works with any markdown** - Obsidian, Logseq, or plain markdown files
-- **Obsidian syntax** - Supports `![alt|width](url)` image sizing and callouts, including foldable ones
+- **Obsidian syntax** - Supports `![alt|width](url)` image sizing, callouts (including foldable ones), `==highlights==`, and `%%comments%%`
 - **Mermaid diagrams** - ```` ```mermaid ```` blocks become static SVG at build time (needs `node`)
 - **Quarto support** - Preprocess `.qmd` files (optional)
 - **Deploy command** - Built-in GitHub Pages deployment
@@ -217,6 +217,16 @@ The body is ordinary Markdown, including lists, wikilinks, math, and nested call
 The type is case-insensitive and sets the class `callout-<type>`; a missing title falls back to the capitalized type.
 Common types such as `tip`, `warning`, `danger`, and `example` get their own accent color, and other types use the `note` color.
 Styles live in `static/callouts.css`, so a custom `main.css` keeps them; a custom `layout.html` needs `<link rel="stylesheet" href="/static/callouts.css">` in `<head>`, before `main.css` so the site stylesheet can override it.
+
+## Highlights and comments
+
+`==text==` renders as `<mark>text</mark>`.
+The text inside the markers can't start or end with a space, so `a == b` stays as written.
+
+Obsidian comments, `%%text%%` inline or `%%` lines around a block, are removed before rendering.
+Comment text never reaches the page, its description, the feed, or the search index.
+`%%` inside fenced code blocks (including Mermaid, which uses `%%` for its own comments) and inline code stays literal.
+As in Obsidian, an unclosed `%%` hides the rest of the page; the build warns when that happens.
 
 ## Quarto Support
 
