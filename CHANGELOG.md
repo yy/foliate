@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 - 2026-11-26
 
 ### Added
 
@@ -11,6 +11,7 @@
 
 ### Fixed
 
+- Quarto figure captions after HTML `<img>` tags keep the italic caption style, as they already did after Markdown images.
 - Inside blockquotes, a list right after a paragraph renders as a list, and `$$` display math across `>` lines no longer passes the `>` markers to KaTeX.
 - Bump the build schema so cached pages re-render with callouts, highlights, comment stripping, and these blockquote fixes.
 

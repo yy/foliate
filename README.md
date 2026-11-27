@@ -292,7 +292,7 @@ upload.
 
 The v0.8 publisher configuration and `foliate publish-assets` command are not compatible with this deployment-based workflow. Existing publisher users should follow the [v0.9 migration guide](docs/releases/0.9.0.md#migrating-the-generated-asset-publisher) before upgrading.
 
-See the [v0.12.0 release notes](docs/releases/0.12.0.md) for optional heading folding and changes to generated-asset publishing.
+See the [v0.13.0 release notes](docs/releases/0.13.0.md) for Mermaid diagrams, callouts, highlights, and comments.
 
 ## Development / CI
 
